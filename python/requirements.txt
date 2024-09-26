@@ -1,0 +1,12 @@
+pandas
+openpyxl
+networkx
+cornflow-client==1.1.1a4
+jsonschema
+pytups
+
+# quarto
+plotnine
+quarto
+papermill
+jupyter
