@@ -1,4 +1,5 @@
-from .tools import generic_from_dict, generic_to_dict
+import json
+from .tools import generic_from_dict, generic_to_dict, flat_list
 from ..schemas import solution
 from cornflow_client import SolutionCore
 from pytups import SuperDict, TupList
@@ -37,6 +38,7 @@ class Solution(SolutionCore):
         return cls.from_dict(data)
 
     def to_dict(self) -> SuperDict:
+        # TODO -> fix this
         return generic_to_dict(self.data, SOLUTION_TABLE_KEYS)
 
     @classmethod
@@ -46,7 +48,23 @@ class Solution(SolutionCore):
 
     @classmethod
     def from_ihtc_json(cls, path: str) -> "Solution":
-        return cls()
+        with open(path, "r") as f:
+            content = json.load(f)
+        data = SuperDict()
+        data["patient_assignment"] = content["patients"]
+        data["nurse_assignment"] = [
+            SuperDict(id=nurse["id"], day=a["day"], shift=a["shift"], room=r)
+            for nurse in content["nurses"]
+            for a in nurse["assignments"]
+            for r in a["rooms"]
+        ]
+        data = generic_from_dict(data, SOLUTION_TABLE_KEYS)
+        return cls(data)
 
     def to_ihtc_json(self, path: str) -> None:
-        return
+        content = generic_to_dict(self.data, SOLUTION_TABLE_KEYS)
+        for table in ["shift_types", "age_groups"]:
+            content[table] = content[table].take("id")
+        with open(path, "w") as f:
+            json.dump(content, f)
+        return None

@@ -1,0 +1,62 @@
+{
+    "$schema": "http://json-schema.org/schema#",
+    "properties": {
+        "nurse_assignment": {
+            "items": {
+                "properties": {
+                    "day": {
+                        "type": "integer"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "room": {
+                        "type": "string"
+                    },
+                    "shift": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "day",
+                    "id",
+                    "room",
+                    "shift"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "patient_assignment": {
+            "items": {
+                "properties": {
+                    "admission_day": {
+                        "type": "integer"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "operating_theater": {
+                        "type": "string"
+                    },
+                    "room": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "admission_day",
+                    "id",
+                    "operating_theater",
+                    "room"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        }
+    },
+    "required": [
+        "nurse_assignment",
+        "patient_assignment"
+    ],
+    "type": "object"
+}

@@ -1,0 +1,331 @@
+{
+    "$schema": "http://json-schema.org/schema#",
+    "properties": {
+        "age_groups": {
+            "items": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "nurse_shifts": {
+            "items": {
+                "properties": {
+                    "day": {
+                        "type": "integer"
+                    },
+                    "max_load": {
+                        "type": "integer"
+                    },
+                    "nurse": {
+                        "type": "string"
+                    },
+                    "shift": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "day",
+                    "max_load",
+                    "nurse",
+                    "shift"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "nurses": {
+            "items": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "skill_level": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "id",
+                    "skill_level"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "occupant_shifts": {
+            "items": {
+                "properties": {
+                    "occupant": {
+                        "type": "string"
+                    },
+                    "pos_shift": {
+                        "type": "integer"
+                    },
+                    "skill_level_required": {
+                        "type": "integer"
+                    },
+                    "workload_produced": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "occupant",
+                    "pos_shift",
+                    "skill_level_required",
+                    "workload_produced"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "occupants": {
+            "items": {
+                "properties": {
+                    "age_group": {
+                        "type": "string"
+                    },
+                    "gender": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "length_of_stay": {
+                        "type": "integer"
+                    },
+                    "room_id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "age_group",
+                    "gender",
+                    "id",
+                    "length_of_stay",
+                    "room_id"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "operating_theater_days": {
+            "items": {
+                "properties": {
+                    "availability": {
+                        "type": "integer"
+                    },
+                    "day": {
+                        "type": "integer"
+                    },
+                    "operating_theater": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "availability",
+                    "day",
+                    "operating_theater"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "operating_theaters": {
+            "items": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "patient_shifts": {
+            "items": {
+                "properties": {
+                    "patient": {
+                        "type": "string"
+                    },
+                    "pos_shift": {
+                        "type": "integer"
+                    },
+                    "skill_level_required": {
+                        "type": "integer"
+                    },
+                    "workload_produced": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "patient",
+                    "pos_shift",
+                    "skill_level_required",
+                    "workload_produced"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "patients": {
+            "items": {
+                "properties": {
+                    "age_group": {
+                        "type": "string"
+                    },
+                    "gender": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "length_of_stay": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "age_group",
+                    "gender",
+                    "id",
+                    "length_of_stay"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "rooms": {
+            "items": {
+                "properties": {
+                    "capacity": {
+                        "type": "integer"
+                    },
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "capacity",
+                    "id"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "shift_types": {
+            "items": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "surgeon_days": {
+            "items": {
+                "properties": {
+                    "day": {
+                        "type": "integer"
+                    },
+                    "max_surgery_time": {
+                        "type": "integer"
+                    },
+                    "surgeon": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "day",
+                    "max_surgery_time",
+                    "surgeon"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "surgeons": {
+            "items": {
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ],
+                "type": "object"
+            },
+            "type": "array"
+        },
+        "weights": {
+            "properties": {
+                "continuity_of_care": {
+                    "type": "integer"
+                },
+                "nurse_eccessive_workload": {
+                    "type": "integer"
+                },
+                "open_operating_theater": {
+                    "type": "integer"
+                },
+                "patient_delay": {
+                    "type": "integer"
+                },
+                "room_mixed_age": {
+                    "type": "integer"
+                },
+                "room_nurse_skill": {
+                    "type": "integer"
+                },
+                "surgeon_transfer": {
+                    "type": "integer"
+                },
+                "unscheduled_optional": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "continuity_of_care",
+                "nurse_eccessive_workload",
+                "open_operating_theater",
+                "patient_delay",
+                "room_mixed_age",
+                "room_nurse_skill",
+                "surgeon_transfer",
+                "unscheduled_optional"
+            ],
+            "type": "object"
+        }
+    },
+    "required": [
+        "age_groups",
+        "nurse_shifts",
+        "nurses",
+        "occupant_shifts",
+        "occupants",
+        "operating_theater_days",
+        "operating_theaters",
+        "patient_shifts",
+        "patients",
+        "rooms",
+        "shift_types",
+        "surgeon_days",
+        "surgeons",
+        "weights"
+    ],
+    "type": "object"
+}
