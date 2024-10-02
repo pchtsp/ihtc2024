@@ -11,11 +11,12 @@ from .tools import generic_from_dict, generic_to_dict, flat_list
 # we define primary keys for each sheet:
 # format: table => column
 TABLE_KEYS = {
+    "parameters": None,
     "patients": ["id"],
     "patient_shifts": ["patient", "pos_shift"],
-    "patient_rooms": ["patient", "room"],
+    "patient_room_ban": ["patient", "room"],
     "occupants": ["id"],
-    "occupant_shifts": ["occupant", "pos_shift"],
+    "occupant_shifts": ["occupant", "shift"],
     "surgeons": ["id"],
     "surgeon_days": ["surgeon", "day"],
     "operating_theaters": ["id"],
@@ -81,9 +82,27 @@ class Instance(InstanceCore):
         data["occupants"] = TupList(content["occupants"]).vapply(
             filter_keys, ["id", "gender", "age_group", "length_of_stay", "room_id"]
         )
-        data["patients"] = TupList(content["patients"]).vapply(
-            filter_keys,
-            ["id", "gender", "age_group", "length_of_stay"],
+        # default value of due_day -> last day for non-mandatory
+        data["patients"] = (
+            TupList(content["patients"])
+            .vapply_col(
+                "surgery_due_day",
+                lambda v: v.get("surgery_due_day", -1),
+            )
+            .vapply(
+                filter_keys,
+                [
+                    "id",
+                    "gender",
+                    "age_group",
+                    "length_of_stay",
+                    "mandatory",
+                    "surgeon_id",
+                    "surgery_release_day",
+                    "surgery_duration",
+                    "surgery_due_day",
+                ],
+            )
         )
         data["patient_shifts"] = flat_list(
             content["patients"],
@@ -91,10 +110,18 @@ class Instance(InstanceCore):
             "pos_shift",
             id_name_out="patient",
         )
+        data["patient_room_ban"] = flat_list(
+            content["patients"],
+            ["incompatible_room_ids"],
+            "__",
+            id_name_out="patient",
+        ).vapply(
+            lambda v: SuperDict(patient=v["patient"], room=v["incompatible_room_ids"])
+        )
         data["occupant_shifts"] = flat_list(
             content["occupants"],
             ["workload_produced", "skill_level_required"],
-            "pos_shift",
+            "shift",
             id_name_out="occupant",
         )
         data["surgeons"] = TupList(content["surgeons"]).vapply(filter_keys, ["id"])
@@ -123,7 +150,10 @@ class Instance(InstanceCore):
         data["weights"] = content["weights"]
 
         for table in ["shift_types", "age_groups"]:
-            data[table] = [{"id": st for st in content[table]}]
+            data[table] = [
+                SuperDict(id=st, pos=pos) for pos, st in enumerate(content[table])
+            ]
+            # data[table] = [{"id": st for st in content[table]}]
         parameters = ["days"]
         data["parameters"] = SuperDict({p: content[p] for p in parameters})
         return cls.from_dict(data)
@@ -137,3 +167,102 @@ class Instance(InstanceCore):
 
     def copy(self):
         return self.from_dict(self.to_dict())
+
+    def get_length_day(self) -> int:
+        return len(self.get_shifttypes())
+
+    def get_horizon_size_days(self) -> int:
+        return self.data["parameters"]["days"]
+
+    def get_horizon_size_shifts(self) -> int:
+        return self.data["parameters"]["days"] * self.get_length_day()
+
+    def get_horizon_days(self) -> range:
+        return range(self.get_horizon_size_days())
+
+    def get_last_shift_horizon(self) -> int:
+        return self.get_last_shift_of_day(self.get_horizon_days()[-1])
+
+    def get_horizon_shifts(self) -> range:
+        return range(self.get_horizon_size_shifts())
+
+    def get_weights(self) -> SuperDict:
+        return self.data["weights"]
+
+    def get_patients(self) -> SuperDict:
+        return self.data["patients"]
+
+    def get_patients_occupants(self) -> SuperDict:
+        patients = self.get_patients().copy_deep()
+        for k, v in patients.items():
+            patients[k]["is_occupant"] = False
+        occupants = self.get_occupants()
+        my_keys = ["age_group", "gender", "length_of_stay", "id"]
+        for _id, occupant in occupants.items():
+            patients[_id] = SuperDict(is_occupant=True)
+            for key in my_keys:
+                patients[_id][key] = occupant[key]
+        return patients
+
+    def get_patient_shifts(self) -> SuperDict:
+        return self.data["patient_shifts"]
+
+    def get_nurses(self) -> SuperDict:
+        return self.data["nurses"]
+
+    def get_nurse_days(self):
+        return self.data["nurse_shifts"]
+
+    def get_nurse_shift(self):
+        nurse_info = self.get_nurse_days().values_tl().copy_deep()
+        get_shift = self.get_shift_from_day_shiftype
+        nurse_info.vapply_col("shift_pos", lambda v: get_shift(v["day"], v["shift"]))
+        return nurse_info.to_dict(None, indices=["nurse", "shift_pos"], is_list=False)
+
+    def get_agegroups(self):
+        return self.data["age_groups"]
+
+    def get_shifttypes(self):
+        return self.data["shift_types"]
+
+    def get_surgeons(self):
+        return self.data["surgeons"]
+
+    def get_surgeon_capacity(self):
+        return self.data["surgeon_days"]
+
+    def get_occupants(self):
+        return self.data["occupants"]
+
+    def get_occupant_shifts(self):
+        return self.data["occupant_shifts"]
+
+    def get_operatingtheater_capacity(self):
+        return self.data["operating_theater_days"]
+
+    def get_patient_available_days(self):
+        first = self.data["patients"].get_property("surgery_release_day")
+        last = self.data["patients"].vapply(
+            lambda v: (
+                v["surgery_due_day"] if v["mandatory"] else self.get_horizon_size_days()
+            )
+            + 1
+        )
+        return first.sapply(range, last)
+
+    def get_shifts_of_day(self, day: int):
+        first = self.get_first_shift_of_day(day)
+        last = self.get_last_shift_of_day(day)
+        return range(first, last)
+
+    def get_first_shift_of_day(self, day: int):
+        length_day = len(self.get_shifttypes())
+        return day * length_day
+
+    def get_last_shift_of_day(self, day: int):
+        length_day = len(self.get_shifttypes())
+        return (day + 1) * length_day - 1
+
+    def get_shift_from_day_shiftype(self, day: int, shift_type: str):
+        shift_types = self.get_shifttypes()
+        return self.get_first_shift_of_day(day) + shift_types[shift_type]["pos"]

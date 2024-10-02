@@ -51,11 +51,6 @@ class Experiment(ExperimentCore):
             data_json = json.load(f)
         return cls.from_dict(data_json)
 
-    def to_json(self, path: str) -> None:
-        data = self.to_dict()
-        with open(path, "w") as f:
-            json.dump(data, f, indent=4, sort_keys=True)
-
     @classmethod
     def from_excel(cls, path: str):
         instance = Instance.from_excel(path)
@@ -84,13 +79,162 @@ class Experiment(ExperimentCore):
         raise NotImplementedError("Must be implemented in the inherited class")
 
     def check_solution(self, **params) -> SuperDict:
-        return SuperDict()
+        patients = self.instance.get_patients_occupants()
+        room_usage = self.get_room_usage()
+        p_gender = patients.get_property("gender")
+        p_assignment = self.get_all_assignments()
+        gender_err = (
+            room_usage.vapply_col("gender", lambda v: p_gender[v["patient"]])
+            .to_dict("gender", indices=["room", "day"])
+            .vapply(set)
+            .vapply(len)
+            .vfilter(lambda v: v > 1)
+        )
+        wrong_rooms = (
+            self.instance.data["patient_room_ban"]
+            .keys_tl()
+            .intersect(room_usage.take(["patient", "room"]))
+        )
+        surgeons_cap = self.instance.get_surgeon_capacity().get_property(
+            "max_surgery_time"
+        )
+        surgeon_overtime = (
+            p_assignment.values_tl()
+            # only new patients, not occupants
+            .vfilter(lambda v: not patients[v["id"]]["is_occupant"])
+            .copy_deep()
+            .vapply_col("surgeon", lambda v: patients[v["id"]]["surgeon_id"])
+            .vapply_col("duration", lambda v: patients[v["id"]]["surgery_duration"])
+            .to_dict("duration", indices=["surgeon", "admission_day"])
+            .vapply(sum)
+            .kvfilter(lambda k, v: v > surgeons_cap[k])
+        )
+        ot_capacity = self.instance.get_operatingtheater_capacity().get_property(
+            "availability"
+        )
+        ot_overusage = (
+            p_assignment.values_tl()
+            # only new patients, not occupants
+            .vfilter(lambda v: not patients[v["id"]]["is_occupant"])
+            .copy_deep()
+            .vapply_col("duration", lambda v: patients[v["id"]]["surgery_duration"])
+            .to_dict("duration", indices=["operating_theater", "admission_day"])
+            .vapply(sum)
+            .kvfilter(lambda k, v: v > ot_capacity[k])
+        )
+        # mandatory patients:
+        mandatory_err = (
+            patients.vfilter(lambda v: not patients[v["id"]]["is_occupant"])
+            .vfilter(lambda v: v["mandatory"])
+            .keys_tl()
+            .set_diff(p_assignment.keys())
+        )
+        # admission day
+        p_days = self.instance.get_patient_available_days()
+        admission_err = p_assignment.vfilter(
+            lambda v: not patients[v["id"]]["is_occupant"]
+        ).vfilter(lambda v: v["admission_day"] not in p_days[v["id"]])
+
+        return SuperDict(
+            h1=gender_err,
+            h2=wrong_rooms,
+            h3=surgeon_overtime,
+            h4=ot_overusage,
+            h5=mandatory_err,
+            h6=admission_err,
+        )
 
     def get_objective(self) -> float:
         """
         A default method form, a wrapper to sum all objective components
         """
-        return 0
+        patients = self.instance.get_patients_occupants()
+        room_usage = self.get_room_usage()
+        weights = self.instance.get_weights()
+        age_groups = self.instance.get_agegroups().get_property("pos")
+        p_agegroup = patients.get_property("age_group").vapply(lambda v: age_groups[v])
+        # age groups:
+        age_group_err = (
+            room_usage.vapply_col("agegroup", lambda v: p_agegroup[v["patient"]])
+            .to_dict("agegroup", indices=["room", "day"])
+            .vapply(lambda v: max(v) - min(v))
+            .vfilter(lambda v: v > 0)
+        )
+        # minimum skill level
+        nurses = self.instance.get_nurses()
+        patient_solution_details = self.get_patient_shift_details()
+        patient_solution_details.values_tl().vapply_col(
+            "nurse_skill", lambda v: nurses[v["nurse"]]["skill_level"]
+        )
+        # S2
+        skill_level_err = patient_solution_details.vapply(
+            lambda v: max(v["skill_level_required"] - v["nurse_skill"], 0)
+        ).vfilter(lambda v: v > 0)
+        # S3
+        continuity_err = (
+            patient_solution_details.values_tl()
+            .to_dict("nurse", indices="id")
+            .vapply(set)
+            .vapply(len)
+        )
+
+        # S4
+        nurse_shift = self.instance.get_nurse_shift()
+        overload__n_s = (
+            patient_solution_details.values_tl()
+            .to_dict("workload_produced", indices=["nurse", "shift"])
+            .vapply(sum)
+            .kvapply(lambda k, v: max(v - nurse_shift[k]["max_load"], 0))
+            .vfilter(lambda v: v > 0)
+        )
+        # open OTs [S5]:
+        patient_assignment = self.get_all_assignments()
+        ot_days = (
+            patient_assignment.values_tl()
+            .vfilter(lambda v: v["operating_theater"] is not None)
+            .to_dict("operating_theater", indices="admission_day")
+            .vapply(set)
+            .vapply(len)
+        )
+
+        # surgeon transfer [S6]:
+        ots__s_d = (
+            patient_assignment.values_tl()
+            .vfilter(lambda v: v["operating_theater"] is not None)
+            .copy_deep()
+            .vapply_col("surgeon", lambda v: patients[v["id"]]["surgeon_id"])
+            .to_dict("operating_theater", indices=["surgeon", "admission_day"])
+            .vapply(lambda v: len(set(v)) - 1)
+            .vfilter(lambda v: v > 0)
+        )
+
+        # admission delay [S7]
+        admission_delay = (
+            patient_assignment.vfilter(lambda v: v["operating_theater"]).get_property(
+                "admission_day"
+            )
+            - patients.get_property("surgery_release_day")
+        ).vfilter(lambda v: v > 0)
+
+        # unscheduled patients [S8]:
+        unscheduled_patients = (
+            patients.keys_tl()
+            .set_diff(patient_assignment.keys())
+            .to_dict(None)
+            .vapply(lambda v: 1)
+        )
+
+        objective = (
+            weights["room_mixed_age"] * sum(age_group_err.values())
+            + weights["room_nurse_skill"] * sum(skill_level_err.values())
+            + weights["continuity_of_care"] * sum(continuity_err.values())
+            + weights["nurse_eccessive_workload"] * sum(overload__n_s.values())
+            + weights["open_operating_theater"] * sum(ot_days.values())
+            + weights["surgeon_transfer"] * sum(ots__s_d.values())
+            + weights["patient_delay"] * sum(admission_delay.values())
+            + weights["unscheduled_optional"] * sum(unscheduled_patients.values())
+        )
+        return objective
 
     def generate_report(self, report_name="report") -> str:
 
@@ -100,3 +244,84 @@ class Experiment(ExperimentCore):
             )
 
         return self.generate_report_quarto(quarto, report_name=report_name)
+
+    def get_room_usage(self):
+        # includes patients and occupants
+        result = TupList()
+        p_length = self.instance.get_patients_occupants().get_property("length_of_stay")
+        p_assignment = self.get_all_assignments()
+        for patient, assignment in p_assignment.items():
+            for pos_d in range(p_length[patient]):
+                elem = SuperDict(
+                    patient=patient,
+                    room=assignment["room"],
+                    day=assignment["admission_day"] + pos_d,
+                )
+                result.append(elem)
+
+        return result
+
+    def get_patient_occupant_stay_days(self):
+        assignment = self.get_all_assignments()
+        patients = self.instance.get_patients_occupants()
+        first = assignment.get_property("admission_day")
+        last = first + patients.get_property("length_of_stay")
+        return first.sapply(range, last)
+
+    def get_patient_occupant_stay_shifts(self):
+        get_first = self.instance.get_first_shift_of_day
+
+        def get_last(day):
+            return min(
+                self.instance.get_last_shift_of_day(day) + 1,
+                self.instance.get_horizon_size_shifts(),
+            )
+
+        return self.get_patient_occupant_stay_days().vapply(
+            lambda v: range(get_first(v[0]), get_last(v[-1]))
+        )
+
+    def get_nurse_assignment_shift(self):
+        nurse_assign = self.solution.get_nurse_assignment()
+
+        result = SuperDict()
+        for (room, day, st), content in nurse_assign.items():
+            shift = self.instance.get_shift_from_day_shiftype(day, st)
+            result[room, shift] = SuperDict(**content, shift_pos=shift)
+        return result
+
+    def get_patient_shift_details(self):
+        patient_assignment = self.get_all_assignments()
+        needs__p_s = self.instance.get_patient_shifts().copy_deep()
+        for elem in needs__p_s.values():
+            elem["id"] = elem["patient"]
+            elem.pop("patient")
+            elem.pop("pos_shift")
+        needs__o_s = self.instance.get_occupant_shifts().copy_deep()
+        for elem in needs__o_s.values():
+            elem["id"] = elem["occupant"]
+            elem.pop("occupant")
+        needs__p_s.update(needs__o_s)
+        patient_shifts = self.get_patient_occupant_stay_shifts()
+        nurse_shift_assignment = self.get_nurse_assignment_shift()
+        result = SuperDict()
+        for p, shifts in patient_shifts.items():
+            room = patient_assignment[p]["room"]
+            for pos, shift in enumerate(shifts):
+                nurse = nurse_shift_assignment[room, shift]["id"]
+                needs__p_s[p, pos].update(SuperDict(shift=shift, nurse=nurse))
+                result[p, shift] = needs__p_s[p, pos]
+        return result
+
+    def get_all_assignments(self):
+        patients = self.solution.get_patient_assignment()
+        patients = patients.copy_deep()
+        occupants = self.instance.get_occupants()
+        for occupant, content in occupants.items():
+            patients[occupant] = SuperDict(
+                id=content["id"],
+                room=content["room_id"],
+                admission_day=0,
+                operating_theater=None,
+            )
+        return patients

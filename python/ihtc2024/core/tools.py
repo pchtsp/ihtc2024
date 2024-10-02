@@ -38,8 +38,8 @@ def flat_list(
     if id_name_out is None:
         id_name_out = id_name
     for p in my_table:
-        keys_lentgh = len(p[keys_to_flat[0]])
-        for pos in range(keys_lentgh):
+        keys_length = len(p[keys_to_flat[0]])
+        for pos in range(keys_length):
             elem = SuperDict({id_name_out: p[id_name]})
             elem[col_name] = pos
             for key in keys_to_flat:

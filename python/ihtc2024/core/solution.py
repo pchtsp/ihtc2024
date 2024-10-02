@@ -7,7 +7,7 @@ from pandas import read_excel
 
 SOLUTION_TABLE_KEYS = {
     "patient_assignment": ["id"],
-    "nurse_assignment": ["room", "shift"],
+    "nurse_assignment": ["room", "day", "shift"],
 }
 
 
@@ -38,7 +38,6 @@ class Solution(SolutionCore):
         return cls.from_dict(data)
 
     def to_dict(self) -> SuperDict:
-        # TODO -> fix this
         return generic_to_dict(self.data, SOLUTION_TABLE_KEYS)
 
     @classmethod
@@ -62,9 +61,14 @@ class Solution(SolutionCore):
         return cls(data)
 
     def to_ihtc_json(self, path: str) -> None:
+        # TODO: this
         content = generic_to_dict(self.data, SOLUTION_TABLE_KEYS)
-        for table in ["shift_types", "age_groups"]:
-            content[table] = content[table].take("id")
         with open(path, "w") as f:
             json.dump(content, f)
         return None
+
+    def get_patient_assignment(self):
+        return self.data["patient_assignment"]
+
+    def get_nurse_assignment(self):
+        return self.data["nurse_assignment"]
