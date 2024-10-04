@@ -1,8 +1,9 @@
 from typing import Union, Type
 from ..core import Experiment
 from .naive import NAIVE
+from .cp_sat import CpSAT
 
-solvers = dict(naive=NAIVE)
+solvers = dict(naive=NAIVE, cpsat=CpSAT)
 
 
 def get_solver(name: str = "milp_solver") -> Union[Type[Experiment], None]:

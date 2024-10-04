@@ -222,6 +222,9 @@ class Instance(InstanceCore):
     def get_agegroups(self):
         return self.data["age_groups"]
 
+    def get_patient_room_ban(self):
+        return self.data["patient_room_ban"]
+
     def get_shifttypes(self):
         return self.data["shift_types"]
 
@@ -237,18 +240,30 @@ class Instance(InstanceCore):
     def get_occupant_shifts(self):
         return self.data["occupant_shifts"]
 
+    def get_operatingtheaters(self):
+        return self.data["operating_theaters"]
+
     def get_operatingtheater_capacity(self):
         return self.data["operating_theater_days"]
 
-    def get_patient_available_days(self):
-        first = self.data["patients"].get_property("surgery_release_day")
-        last = self.data["patients"].vapply(
+    def get_rooms(self):
+        return self.data["rooms"]
+
+    def get_patient_occupants_available_starts(self):
+
+        patients = self.get_patients()
+        first = patients.get_property("surgery_release_day")
+        last = patients.vapply(
             lambda v: (
-                v["surgery_due_day"] if v["mandatory"] else self.get_horizon_size_days()
+                v["surgery_due_day"] + 1
+                if v["mandatory"]
+                else self.get_horizon_size_days()
             )
-            + 1
         )
-        return first.sapply(range, last)
+        patient_starts = first.sapply(range, last)
+        occupants_starts = self.get_occupants().vapply(lambda v: range(0, 1))
+
+        return SuperDict(**patient_starts, **occupants_starts)
 
     def get_shifts_of_day(self, day: int):
         first = self.get_first_shift_of_day(day)
@@ -266,3 +281,15 @@ class Instance(InstanceCore):
     def get_shift_from_day_shiftype(self, day: int, shift_type: str):
         shift_types = self.get_shifttypes()
         return self.get_first_shift_of_day(day) + shift_types[shift_type]["pos"]
+
+    def get_day_from_shift(self, shift):
+        shift_types = self.get_shifttypes()
+        return shift // len(shift_types)
+
+    def get_shiftype_from_shift(self, shift):
+        shift_types = (
+            self.get_shifttypes()
+            .values_tl()
+            .to_dict("id", indices="pos", is_list=False)
+        )
+        return shift_types[shift % len(shift_types)]

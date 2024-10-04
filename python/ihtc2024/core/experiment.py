@@ -91,7 +91,7 @@ class Experiment(ExperimentCore):
             .vfilter(lambda v: v > 1)
         )
         wrong_rooms = (
-            self.instance.data["patient_room_ban"]
+            self.instance.get_patient_room_ban()
             .keys_tl()
             .intersect(room_usage.take(["patient", "room"]))
         )
@@ -130,7 +130,7 @@ class Experiment(ExperimentCore):
             .set_diff(p_assignment.keys())
         )
         # admission day
-        p_days = self.instance.get_patient_available_days()
+        p_days = self.instance.get_patient_occupants_available_starts()
         admission_err = p_assignment.vfilter(
             lambda v: not patients[v["id"]]["is_occupant"]
         ).vfilter(lambda v: v["admission_day"] not in p_days[v["id"]])
@@ -144,13 +144,9 @@ class Experiment(ExperimentCore):
             h6=admission_err,
         )
 
-    def get_objective(self) -> float:
-        """
-        A default method form, a wrapper to sum all objective components
-        """
+    def get_objective_terms(self):
         patients = self.instance.get_patients_occupants()
         room_usage = self.get_room_usage()
-        weights = self.instance.get_weights()
         age_groups = self.instance.get_agegroups().get_property("pos")
         p_agegroup = patients.get_property("age_group").vapply(lambda v: age_groups[v])
         # age groups:
@@ -223,18 +219,24 @@ class Experiment(ExperimentCore):
             .to_dict(None)
             .vapply(lambda v: 1)
         )
-
-        objective = (
-            weights["room_mixed_age"] * sum(age_group_err.values())
-            + weights["room_nurse_skill"] * sum(skill_level_err.values())
-            + weights["continuity_of_care"] * sum(continuity_err.values())
-            + weights["nurse_eccessive_workload"] * sum(overload__n_s.values())
-            + weights["open_operating_theater"] * sum(ot_days.values())
-            + weights["surgeon_transfer"] * sum(ots__s_d.values())
-            + weights["patient_delay"] * sum(admission_delay.values())
-            + weights["unscheduled_optional"] * sum(unscheduled_patients.values())
+        return SuperDict(
+            room_mixed_age=age_group_err,
+            room_nurse_skill=skill_level_err,
+            continuity_of_care=continuity_err,
+            nurse_eccessive_workload=overload__n_s,
+            open_operating_theater=ot_days,
+            surgeon_transfer=ots__s_d,
+            patient_delay=admission_delay,
+            unscheduled_optional=unscheduled_patients,
         )
-        return objective
+
+    def get_objective(self) -> float:
+        """
+        A default method form, a wrapper to sum all objective components
+        """
+        weights = self.instance.get_weights()
+        terms = self.get_objective_terms().vapply(lambda v: sum(v.values()))
+        return sum((weights * terms).values())
 
     def generate_report(self, report_name="report") -> str:
 

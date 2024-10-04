@@ -61,10 +61,20 @@ class Solution(SolutionCore):
         return cls(data)
 
     def to_ihtc_json(self, path: str) -> None:
-        # TODO: this
         content = generic_to_dict(self.data, SOLUTION_TABLE_KEYS)
+        nurses = []
+        _temp = content["nurse_assignment"].to_dict(None, indices="id")
+        for nurse, rows in _temp.items():
+            elem = {"id": nurse}
+            row_indexed = rows.to_dict("room", indices=["day", "shift"])
+            elem["assignments"] = [
+                dict(day=day, shift=shift, rooms=v)
+                for (day, shift), v in row_indexed.items()
+            ]
+            nurses.append(elem)
+        result = dict(patients=content["patient_assignment"], nurses=nurses)
         with open(path, "w") as f:
-            json.dump(content, f)
+            json.dump(result, f)
         return None
 
     def get_patient_assignment(self):
