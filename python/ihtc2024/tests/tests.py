@@ -81,30 +81,32 @@ class TestInstance(unittest.TestCase):
 
     def test_solve_toy_cpsat(self):
         my_experim = solvers["cpsat"](self.instance)
-        my_experim.solve(dict())
+        my_experim.solve(dict(threads=8, timeLimit=100, msg=True))
         checks = my_experim.check_solution()
 
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
-        my_experim.get_objective()
+        objective = my_experim.get_objective()
+        print(objective)
 
     def test_solve_test_instance_1_cpsat(self):
         path_to_data = os.path.join(tests_dir, "../../../data/ihtc2024_test_dataset/")
         self.instance = Instance.from_ihtc_json(
-            os.path.join(path_to_data, "test01.json")
+            os.path.join(path_to_data, "test05.json")
         )
         my_experim = solvers["cpsat"](self.instance)
-        my_experim.solve(dict())
+        my_experim.solve(dict(threads=8, timeLimit=5, msg=True))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
-        my_experim.get_objective()
+        objective = my_experim.get_objective()
+        print(objective)
 
     def test_solve_competition_instance_cpsat(self):
         path_to_data = os.path.join(
             tests_dir, "../../../data/ihtc2024_competition_instances/"
         )
-        self.instance = Instance.from_ihtc_json(os.path.join(path_to_data, "i01.json"))
+        self.instance = Instance.from_ihtc_json(os.path.join(path_to_data, "i06.json"))
         my_experim = solvers["cpsat"](self.instance)
-        my_experim.solve(dict())
+        my_experim.solve(dict(threads=8, timeLimit=5, msg=True))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         my_experim.get_objective()
