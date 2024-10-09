@@ -50,7 +50,11 @@ class Solution(SolutionCore):
         with open(path, "r") as f:
             content = json.load(f)
         data = SuperDict()
-        data["patient_assignment"] = content["patients"]
+        data["patient_assignment"] = [
+            elem
+            for elem in content["patients"]
+            if elem["admission_day"] not in [None, "none"]
+        ]
         data["nurse_assignment"] = [
             SuperDict(id=nurse["id"], day=a["day"], shift=a["shift"], room=r)
             for nurse in content["nurses"]
