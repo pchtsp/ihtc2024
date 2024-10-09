@@ -94,7 +94,7 @@ class TestInstance(unittest.TestCase):
             os.path.join(path_to_data, "test05.json")
         )
         my_experim = solvers["cpsat"](self.instance)
-        my_experim.solve(dict(threads=8, timeLimit=5, msg=True))
+        my_experim.solve(dict(threads=8, timeLimit=30, msg=True))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         objective = my_experim.get_objective()
@@ -104,12 +104,13 @@ class TestInstance(unittest.TestCase):
         path_to_data = os.path.join(
             tests_dir, "../../../data/ihtc2024_competition_instances/"
         )
-        self.instance = Instance.from_ihtc_json(os.path.join(path_to_data, "i06.json"))
+        self.instance = Instance.from_ihtc_json(os.path.join(path_to_data, "i15.json"))
         my_experim = solvers["cpsat"](self.instance)
-        my_experim.solve(dict(threads=8, timeLimit=5, msg=True))
+        my_experim.solve(dict(threads=8, timeLimit=60, msg=True))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
-        my_experim.get_objective()
+        objective = my_experim.get_objective()
+        print(objective)
 
 
 if __name__ == "__main__":

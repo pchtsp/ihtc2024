@@ -294,20 +294,11 @@ class Experiment(ExperimentCore):
 
     def get_patient_shift_details(self):
         patient_assignment = self.get_all_assignments()
-        needs__p_s = self.instance.get_patient_shifts().copy_deep()
-        for elem in needs__p_s.values():
-            elem["id"] = elem["patient"]
-            elem.pop("patient")
-            elem.pop("pos_shift")
-        needs__o_s = self.instance.get_occupant_shifts().copy_deep()
-        for elem in needs__o_s.values():
-            elem["id"] = elem["occupant"]
-            elem.pop("occupant")
-        needs__p_s.update(needs__o_s)
-        patient_shifts = self.get_patient_occupant_stay_shifts()
+        needs__p_s = self.instance.get_patients_occupants_needs()
+        patient_occupants_shifts = self.get_patient_occupant_stay_shifts()
         nurse_shift_assignment = self.get_nurse_assignment_shift()
         result = SuperDict()
-        for p, shifts in patient_shifts.items():
+        for p, shifts in patient_occupants_shifts.items():
             room = patient_assignment[p]["room"]
             for pos, shift in enumerate(shifts):
                 nurse = nurse_shift_assignment[room, shift]["id"]

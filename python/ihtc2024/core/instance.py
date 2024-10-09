@@ -268,7 +268,7 @@ class Instance(InstanceCore):
     def get_shifts_of_day(self, day: int):
         first = self.get_first_shift_of_day(day)
         last = self.get_last_shift_of_day(day)
-        return range(first, last)
+        return range(first, last + 1)
 
     def get_first_shift_of_day(self, day: int):
         length_day = len(self.get_shifttypes())
@@ -293,3 +293,16 @@ class Instance(InstanceCore):
             .to_dict("id", indices="pos", is_list=False)
         )
         return shift_types[shift % len(shift_types)]
+
+    def get_patients_occupants_needs(self):
+        needs__p_s = self.get_patient_shifts().copy_deep()
+        for elem in needs__p_s.values():
+            elem["id"] = elem["patient"]
+            elem.pop("patient")
+            elem.pop("pos_shift")
+        needs__o_s = self.get_occupant_shifts().copy_deep()
+        for elem in needs__o_s.values():
+            elem["id"] = elem["occupant"]
+            elem.pop("occupant")
+        needs__p_s.update(needs__o_s)
+        return needs__p_s
