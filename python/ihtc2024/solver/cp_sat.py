@@ -2,6 +2,10 @@ from .. import Solution
 from ..core.experiment import Experiment
 from ortools.sat.python import cp_model
 
+import os
+import sys
+from contextlib import contextmanager
+
 from pytups import SuperDict, TupList
 
 from cornflow_client.constants import (
@@ -16,7 +20,9 @@ from cornflow_client.constants import (
 class CpSAT(Experiment):
 
     def solve(self, options: dict = None) -> dict:
-        if options.get("msg", True):
+        VERBOSE = options.get("msg", False)
+        if VERBOSE:
+
             print("Building of model starts")
 
         weights = self.instance.get_weights()
@@ -629,11 +635,13 @@ class CpSAT(Experiment):
         # )
         errors = model.Validate()
         if errors:
-            if options.get("msg", True):
+            if VERBOSE:
                 print(errors)
 
             raise ValueError("Model not formulated correctly")
         solver = cp_model.CpSolver()
+        if VERBOSE:
+            solver.parameters.log_search_progress = True
         solver.parameters.max_time_in_seconds = options.get("timeLimit", 10)
         if "threads" in options:
             solver.parameters.num_search_workers = options["threads"]
@@ -642,10 +650,16 @@ class CpSAT(Experiment):
         if options.get("msg", False):
             solution_callback = VarArraySolutionPrinter()
 
-        if options.get("msg", True):
+        if VERBOSE:
             print("Solver starts")
+        path_of_log = options.get("logPath")
 
-        status = solver.Solve(model, solution_callback=solution_callback)
+        if path_of_log is not None:
+            with open(path_of_log, "w") as f, stdout_redirected(f):
+                status = solver.Solve(model)
+        else:
+            status = solver.Solve(model)
+
         status_conv = {
             cp_model.OPTIMAL: STATUS_OPTIMAL,
             cp_model.FEASIBLE: STATUS_OPTIMAL,
@@ -658,7 +672,7 @@ class CpSAT(Experiment):
             print(f"Model finished with status {status_conv.get(status)}")
 
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            if options.get("msg", True):
+            if VERBOSE:
                 print("No solution was found")
             return dict(
                 status=status_conv.get(status), status_sol=SOLUTION_STATUS_INFEASIBLE
@@ -823,3 +837,34 @@ def negate_var_bool(my_var: bool | cp_model.IntVar):
     if isinstance(my_var, int):
         return not my_var
     return my_var.Not()
+
+
+def fileno(file_or_fd):
+    fd = getattr(file_or_fd, "fileno", lambda: file_or_fd)()
+    if not isinstance(fd, int):
+        raise ValueError("Expected a file (`.fileno()`) or a file descriptor")
+    return fd
+
+
+@contextmanager
+def stdout_redirected(to=os.devnull, stdout=None):
+    if stdout is None:
+        stdout = sys.stdout
+
+    stdout_fd = fileno(stdout)
+    # copy stdout_fd before it is overwritten
+    # NOTE: `copied` is inheritable on Windows when duplicating a standard stream
+    with os.fdopen(os.dup(stdout_fd), "wb") as copied:
+        stdout.flush()  # flush library buffers that dup2 knows nothing about
+        try:
+            os.dup2(fileno(to), stdout_fd)  # $ exec >&to
+        except ValueError:  # filename
+            with open(to, "wb") as to_file:
+                os.dup2(to_file.fileno(), stdout_fd)  # $ exec > to
+        try:
+            yield stdout  # allow code to be run with the redirected stdout
+        finally:
+            # restore stdout to its previous value
+            # NOTE: dup2 makes stdout_fd inheritable unconditionally
+            stdout.flush()
+            os.dup2(copied.fileno(), stdout_fd)  # $ exec >&copied

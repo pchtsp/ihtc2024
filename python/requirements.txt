@@ -4,6 +4,8 @@ networkx
 cornflow-client==1.1.1a4
 jsonschema
 pytups
+orloge
+click
 
 # quarto
 plotnine
