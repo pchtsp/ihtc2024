@@ -21,6 +21,7 @@ class CpSAT(Experiment):
 
     def solve(self, options: dict = None) -> dict:
         VERBOSE = options.get("msg", False)
+        WARMSTART = options.get("warmStart", False)
         if VERBOSE:
 
             print("Building of model starts")
@@ -30,14 +31,13 @@ class CpSAT(Experiment):
         patients = self.instance.get_patients()
         possible_start = self.instance.get_patient_occupants_available_starts()
         nurse_shifts = self.instance.get_nurse_shift()
-        patient_shifts = self.instance.get_patient_shifts()
         operation_theaters = self.instance.get_operatingtheaters().copy_deep()
         patients_occupants = self.instance.get_patients_occupants()
         occupants = self.instance.get_occupants()
         needs__p_sPos = self.instance.get_patients_occupants_needs()
         last_shift = self.instance.get_last_shift_horizon()
         my_sum = cp_model.LinearExpr.Sum
-
+        # fix_variables_to_their_hinted_value
         for pos, _theater in enumerate(operation_theaters.values()):
             _theater["pos"] = pos
         surgery_duration = patients.get_property("surgery_duration")
@@ -85,6 +85,7 @@ class CpSAT(Experiment):
                 if p in patients
             }
         )
+
         # stay_binary, if a patient is in a room
         length_of_stay = patients_occupants.get_property("length_of_stay")
         possible_stay = possible_start.kvapply(
@@ -262,6 +263,7 @@ class CpSAT(Experiment):
                     negate_var_bool(room_binary[p, r])
                 )
 
+        # nurses part
         nurse_r_s = SuperDict()
         nurses__s = (
             nurse_shifts.values_tl()
@@ -380,7 +382,7 @@ class CpSAT(Experiment):
         ).kvapply(lambda k, v: model.NewIntVar(0, v, name=f"overwork_{k[0]}_{k[1]}"))
 
         workload__p_posShift = needs__p_sPos.get_property("workload_produced")
-        workload__p__posShift = workload__p_posShift.to_dictdict()
+        skill_level__p_sPos = needs__p_sPos.get_property("skill_level_required")
 
         # occupants, the workload comes directly from the position of the shift
         # all the others are variables:
@@ -396,6 +398,16 @@ class CpSAT(Experiment):
                 )
             )
         )
+        positions_p = needs__p_sPos.keys_tl().to_dict(1).vapply(len)
+        # TODO: I can filter some values based on the position of the shift relative to the start/end of potential stay
+        patient_posShift__p_s = nurse__p_s.kapply(
+            lambda k: (
+                model.NewIntVar(0, positions_p[k[0]], name=f"position_{k[0]}_{k[1]}")
+                if not patients_occupants[k[0]]["is_occupant"]
+                else k[1]
+            )
+        )
+
         patient_nurse_workload__n_p_s = domain_n_p_s.to_dict(None).vapply(
             lambda v: (
                 model.NewIntVar(
@@ -405,19 +417,18 @@ class CpSAT(Experiment):
                 else workload__p_posShift[v[1], v[2]]
             )
         )
-
+        # we define the position shift for each active shift
         for p, days in possible_start.items():
             if patients_occupants[p]["is_occupant"]:
                 # we already have the workload as a parameter
                 continue
             for day in days:
-                workload = workload__p__posShift[p]
-                for posShift, workload in workload.items():
+                for posShift in range(positions_p[p]):
                     my_shift = day * 3 + posShift
                     if my_shift > last_shift:
                         continue
                     model.Add(
-                        patient_workload__p_s[p, my_shift] == workload
+                        patient_posShift__p_s[p, my_shift] == posShift
                     ).OnlyEnforceIf(admission_bin[p, day])
 
         # we assign this workload to a nurse
@@ -433,6 +444,73 @@ class CpSAT(Experiment):
                 nurse_overwork__n_s[n, s]
                 >= my_sum(_all_workload) - nurse_max_load__n_s[n, s]
             )
+
+        # S2
+        # calculate the skill levels ordered by position of nurse (for element constraint)
+        nurses_skill_level = (
+            nurses.values_tl().sorted(key=lambda v: v["pos"]).take("skill_level")
+        )
+        # we add dummy_nurse has all skills:
+        max_skill_level = max(nurses_skill_level)
+        nurses_skill_level += [max_skill_level]
+        # skill level given to patient p in shift s
+        skill_level__p_s = nurse__p_s.kapply(
+            lambda k: model.NewIntVar(
+                0, max_skill_level, name=f"skill_level_{k[0]}_{k[1]}"
+            )
+        )
+        # skill difference between required and actual
+        skill_diff__p_s = nurse__p_s.kapply(
+            lambda k: model.NewIntVar(
+                0, max_skill_level, name=f"skill_diff_{k[0]}_{k[1]}"
+            )
+        )
+        max_skill_level__p = (
+            skill_level__p_sPos.to_tuplist().to_dict(2, indices=0).vapply(max)
+        )
+        skill_needed__p_s = nurse__p_s.kapply(
+            lambda k: (
+                model.NewIntVar(
+                    0, max_skill_level__p[k[0]], name=f"skill_need_{k[0]}_{k[1]}"
+                )
+                if not patients_occupants[k[0]]["is_occupant"]
+                else skill_level__p_sPos[k[0], k[1]]
+            )
+        )
+
+        for p, s in patient_posShift__p_s.keys():
+            workload_per_pos = [
+                workload__p_posShift[p, pos] for pos in range(positions_p[p])
+            ]
+            skill_level_per_pos = [
+                skill_level__p_sPos[p, pos] for pos in range(positions_p[p])
+            ]
+            if not patients_occupants[p]["is_occupant"]:
+                # we get the workload from the position
+                # occupants have it already pre-assigned
+                model.AddElement(
+                    patient_posShift__p_s[p, s],
+                    workload_per_pos,
+                    patient_workload__p_s[p, s],
+                )
+                # we get the required skill level from the position
+                # occupants have it already pre-assigned
+                model.AddElement(
+                    patient_posShift__p_s[p, s],
+                    skill_level_per_pos,
+                    skill_needed__p_s[p, s],
+                )
+            # we use nurse[p, s] to get the skill-level given to patient p in shift s
+            model.AddElement(
+                nurse__p_s[p, s], nurses_skill_level, skill_level__p_s[p, s]
+            )
+            my_day = self.instance.get_day_from_shift(s)
+            # we calculate the difference between the level and the required level
+            # but only if the stay is active
+            model.Add(
+                skill_diff__p_s[p, s]
+                >= skill_needed__p_s[p, s] - skill_level__p_s[p, s]
+            ).OnlyEnforceIf(stay_bin[p, my_day])
 
         gender = patients_occupants.get_property("gender")
         patients_list = patients_occupants.keys_tl()
@@ -455,7 +533,6 @@ class CpSAT(Experiment):
                 if gender[p1] == gender[p2]
             }
         )
-        # constraints:
         # H1
         # TODO: this could be a 2D no-overlap I suspect?
         for p1, p2, room_pos, d in shared_room_domain__p1_p2_r_d:
@@ -499,66 +576,6 @@ class CpSAT(Experiment):
                 max_age_diff[room_pos, d] >= age_group[p2] - age_group[p1]
             ).OnlyEnforceIf(share_room[p1, p2, room_pos, d])
 
-        # S2
-        # calculate the skill levels ordered by position of nurse (for element constraint)
-        nurses_skill_level = (
-            nurses.values_tl().sorted(key=lambda v: v["pos"]).take("skill_level")
-        )
-        # we add dummy_nurse has all skills:
-        max_skill_level = max(nurses_skill_level)
-        nurses_skill_level += [max_skill_level]
-        skill_level__p_s = nurse__p_s.kapply(
-            lambda k: model.NewIntVar(
-                0, max_skill_level, name=f"skill_level_{k[0]}_{k[1]}"
-            )
-        )
-        skill_diff__p_s = nurse__p_s.kapply(
-            lambda k: model.NewIntVar(
-                0, max_skill_level, name=f"skill_diff_{k[0]}_{k[1]}"
-            )
-        )
-        skill_level__p_sPos = needs__p_sPos.get_property("skill_level_required")
-        skill_level__p__sPos = skill_level__p_sPos.to_dictdict()
-        max_skill_level__p = (
-            skill_level__p_sPos.to_tuplist().to_dict(2, indices=0).vapply(max)
-        )
-        skill_needed__p_s = nurse__p_s.kapply(
-            lambda k: (
-                model.NewIntVar(
-                    0, max_skill_level__p[k[0]], name=f"skill_diff_{k[0]}_{k[1]}"
-                )
-                if not patients_occupants[k[0]]["is_occupant"]
-                else skill_level__p_sPos[k[0], k[1]]
-            )
-        )
-
-        for p, days in possible_start.items():
-            if patients_occupants[p]["is_occupant"]:
-                # we already have the workload as a parameter for occupants
-                continue
-            for day in days:
-                _skill_level = skill_level__p__sPos[p]
-                for posShift, skill_level in _skill_level.items():
-                    my_shift = day * 3 + posShift
-                    if my_shift > last_shift:
-                        continue
-                    # if patient p is admitted in "day", then the following shifts
-                    # should have the skill_level assigned.
-                    model.Add(
-                        skill_needed__p_s[p, my_shift] == skill_level
-                    ).OnlyEnforceIf(admission_bin[p, day])
-
-        for p, s in domain_n_p_s__p_s_with_dummy:
-            # we use nurse[p, s] to get the skill for patient, shift
-            model.AddElement(
-                nurse__p_s[p, s], nurses_skill_level, skill_level__p_s[p, s]
-            )
-            # we calculate the difference between the level and the required level
-            model.Add(
-                skill_diff__p_s[p, s]
-                >= skill_needed__p_s[p, s] - skill_level__p_s[p, s]
-            )
-
         # H3
         for surgeon, capacities in surgeons_cap.items():
             _patients = patients__s[surgeon]
@@ -591,6 +608,29 @@ class CpSAT(Experiment):
                 # if we admit a patient, we assign 1 theater and 1 room
                 model.Add(all_rooms == all_admissions)
                 model.Add(all_theaters == all_admissions)
+
+        if WARMSTART and self.solution is not None:
+            patient_assignments = self.solution.get_patient_assignment()
+            for v in patient_assignments.values():
+                p = v["id"]
+                d = v["admission_day"]
+                r = rooms[v["room"]]["pos"]
+                t = v["operating_theater"]
+                model.AddHint(admission_bin[p, d], 1)
+                model.AddHint(room_binary[p, r], 1)
+                model.AddHint(theater_bin[p, t], 1)
+            nurse_assignments = self.get_nurse_assignment_shift()
+            for v in nurse_assignments.values():
+                r = rooms[v["room"]]["pos"]
+                n = nurses[v["id"]]["pos"]
+                s = v["shift_pos"]
+                model.AddHint(nurse_r_s[r, s], n)
+            patient_details = self.get_patient_shift_details()
+            for v in patient_details.values():
+                n = nurses[v["nurse"]]["pos"]
+                p = v["id"]
+                s = v["shift"]
+                nurse_patient__n_p_s[n, p, s] = 1
 
         model.Minimize(
             # S1
@@ -645,6 +685,8 @@ class CpSAT(Experiment):
         solver.parameters.max_time_in_seconds = options.get("timeLimit", 10)
         if "threads" in options:
             solver.parameters.num_search_workers = options["threads"]
+        if "fixSolution" in options:
+            solver.parameters.fix_variables_to_their_hinted_value = True
         solution_callback = None
 
         if options.get("msg", False):
@@ -733,6 +775,7 @@ class CpSAT(Experiment):
         )
         model_skill_level_assigned = skill_level__p_s.vapply(solver.Value)
         model_skill_level_diff = skill_diff__p_s.vapply(solver.Value)
+        assigned_nurse = patient_details.get_property("nurse")
         # we compare the required skill per shift
         patient_details.get_property("skill_level_required").kvfilter(
             lambda k, v: v != model_needed_sl[k]
@@ -741,7 +784,6 @@ class CpSAT(Experiment):
             lambda k, v: v
             != patient_details.get_m(k, "skill_level_required", default=0)
         )
-        assigned_nurse = patient_details.get_property("nurse")
 
         # we compare the nurses assignment
         assigned_nurse.kvfilter(lambda k, v: v != model_nurse[k])
@@ -765,7 +807,6 @@ class CpSAT(Experiment):
         model_skill_level_diff.kvfilter(
             lambda k, v: v != skill_level_diff.get_m(k, default=0)
         )
-        # Out[31]: {('p16', 33): 1, ('p16', 36): 1, ('p40', 33): 1, ('p47', 10): 1}
         assigned_n_p = patient_details.values_tl().take(["nurse", "id"]).unique2()
         model_nurse_patients = (
             nurse_patient__n_p.vapply(solver.Value)
@@ -800,7 +841,6 @@ class CpSAT(Experiment):
         assigned_p_s = patient_occupants_shifts.vapply(list).to_tuplist()
         assigned_p_s.set_diff(model_p_s)
         model_p_s.set_diff(assigned_p_s)
-        # Out[44]: [('p56', 33), ('p56', 34), ('p56', 35)]
 
         mode_admission_bin = admission_bin.vapply(solver.Value)
         model_stay_bin = stay_bin.vapply(solver.Value)

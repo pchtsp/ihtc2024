@@ -69,10 +69,11 @@ class Instance(InstanceCore):
         return cls(data)
 
     @classmethod
-    def from_ihtc_json(cls, path: str) -> "Instance":
+    def from_ihtc_json(cls, path: str, content: str = None) -> "Instance":
         # TODO: parametrize this
-        with open(path, "r") as f:
-            content = json.load(f)
+        if content is None:
+            with open(path, "r") as f:
+                content = json.load(f)
 
         data = SuperDict()
 

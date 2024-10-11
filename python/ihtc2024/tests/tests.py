@@ -88,21 +88,25 @@ class TestInstance(unittest.TestCase):
         objective = my_experim.get_objective()
         print(objective)
 
-    def test_solve_test_instance_1_cpsat(self):
+    def get_solved_experiment(self, test_instance_name):
         path_to_data = os.path.join(tests_dir, "../../../data/")
-        test_instance_name = "test04.json"
-        instance = Instance.from_ihtc_json(
-            os.path.join(path_to_data, "ihtc2024_test_dataset/" + test_instance_name)
+        # test_instance_name = "test01.json"
+        instance_path = os.path.join(
+            path_to_data, "ihtc2024_test_dataset/" + test_instance_name
         )
-        solution = Solution.from_ihtc_json(
-            os.path.join(
-                path_to_data, "ihtc2024_test_solutions/" + "sol_" + test_instance_name
-            )
+        instance = Instance.from_ihtc_json(instance_path)
+        solution_path = os.path.join(
+            path_to_data, "ihtc2024_test_solutions/" + "sol_" + test_instance_name
         )
+        solution = Solution.from_ihtc_json(solution_path)
         my_experim_solved = solvers["cpsat"](instance, solution)
+        return my_experim_solved
+
+    def test_solve_test_instance_1_cpsat(self):
+        my_experim_solved = self.get_solved_experiment("test01.json")
         print(my_experim_solved.get_objective())
-        my_experim = solvers["cpsat"](instance)
-        my_experim.solve(dict(threads=8, timeLimit=30, msg=False))
+        my_experim = solvers["cpsat"](my_experim_solved.instance)
+        my_experim.solve(dict(threads=8, timeLimit=30, msg=True))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         objective = my_experim.get_objective()
@@ -119,6 +123,39 @@ class TestInstance(unittest.TestCase):
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         objective = my_experim.get_objective()
         print(objective)
+
+    def test_solved_fixed(self):
+        for name in [f"test0{i}.json" for i in range(1, 6)]:
+            print(name)
+            experiment = self.get_solved_experiment(name)
+            my_experim = solvers["cpsat"](experiment.instance, experiment.solution)
+            old_objective = my_experim.get_objective()
+            status = my_experim.solve(
+                dict(
+                    threads=8, timeLimit=60, msg=True, warmStart=True, fixSolution=True
+                )
+            )
+            # it needs to find a solution:
+            self.assertEqual(status["status"], 1)
+            new_objective = my_experim.get_objective()
+            self.assertTrue(old_objective, new_objective)
+
+    def test_hint_solution(self):
+        # for name in [f"test0{i}.json" for i in range(1, 6)]:
+        name = "test05.json"
+        # print(name)
+        experiment = self.get_solved_experiment(name)
+        my_experim = solvers["cpsat"](experiment.instance, experiment.solution)
+        old_objective = my_experim.get_objective()
+        status = my_experim.solve(
+            dict(threads=8, timeLimit=60, msg=True, warmStart=True)
+        )
+        # it needs to find a solution:
+        self.assertEqual(status["status"], 1)
+        new_objective = my_experim.get_objective()
+
+        print(old_objective)
+        print(new_objective)
 
 
 if __name__ == "__main__":

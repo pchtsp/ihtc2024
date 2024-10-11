@@ -20,7 +20,10 @@ class Experiment(ExperimentCore):
     def __init__(self, instance: Instance, solution: Solution = None):
         super().__init__(instance, solution)
         if solution is None:
-            solution = Solution(SuperDict())
+            empty_solution = SuperDict(
+                patient_assignment=TupList(), nurse_assignment=TupList()
+            )
+            solution = Solution.from_dict(empty_solution)
         self.solution = solution
         return
 
@@ -44,6 +47,21 @@ class Experiment(ExperimentCore):
         return cls(
             Instance.from_dict(data["instance"]), Solution.from_dict(data["solution"])
         )
+
+    @classmethod
+    def from_dir(
+        cls,
+        path: str,
+        instance_file: str = "input.json",
+        solution_file: str = "output.json",
+    ) -> "Experiment":
+        instance_path = os.path.join(path, instance_file)
+        solution_path = os.path.join(path, solution_file)
+        instance = Instance.from_json(instance_path)
+        solution = None
+        if os.path.exists(solution_path):
+            solution = Solution.from_json(os.path.join(path, solution_file))
+        return cls(instance, solution)
 
     @classmethod
     def from_json(cls, path: str) -> "Experiment":

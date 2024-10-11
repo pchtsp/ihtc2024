@@ -1,4 +1,4 @@
-from ihtc2024.core import Instance, ZipBatch
+from ihtc2024.core import Instance, ZipBatch, Batch, Solution
 from ihtc2024.core import tools
 from ihtc2024.solver import get_solver
 import zipfile
@@ -9,6 +9,10 @@ import logging as log
 from typing import List
 from datetime import datetime
 import socket
+import pandas as pd
+from functools import reduce
+
+path_to_dir = "/home/pchtsp/Documents/projects/ihtc2024/results"
 
 
 def solve_zip(
@@ -60,7 +64,7 @@ def solve_zip(
         os.mkdir(experiment_dir)
         if zip_obj is not None:
             data = zip_obj.read(filename)
-            inst = Instance.from_mm(path="", content=data.decode().splitlines(True))
+            inst = Instance.from_ihtc_json(path="", content=data.decode())
         else:
             full_name = os.path.join(path, filename)
             inst = Instance.from_ihtc_json(full_name)
@@ -110,8 +114,11 @@ def solve_scenarios_and_zip(
     shutil.make_archive(path_to_dir, "zip", root_dir=root_dir, base_dir=base_dir)
 
 
-def get_table(zipfile_name: str):
-    batch = ZipBatch(zipfile_name)
+def get_table(path: str, is_zip_file=True):
+    if is_zip_file:
+        batch = ZipBatch(path)
+    else:
+        batch = Batch(path)
     objs = batch.get_objective_function()
     opts = batch.get_options()
     errors = batch.get_errors().vapply(lambda v: dict(errors=v))
@@ -126,11 +133,11 @@ def get_table(zipfile_name: str):
     return result
 
 
-if __name__ == "__main__":
+def my_benchmark():
     path_in = "/home/pchtsp/Documents/projects/ihtc2024/data/"
-    scenarios = ["ihtc2024_competition_instances"]
+    # scenarios = ["ihtc2024_competition_instances"]
+    scenarios = ["ihtc2024_test_dataset"]
     solver_name = "cpsat"
-    path_to_dir = "/home/pchtsp/Documents/projects/ihtc2024/results"
     zipfile_name = path_to_dir + ".zip"
     # we create a run with a timestamp
     timestamp = datetime.now().strftime("%Y-%m-%dT%H%M")
@@ -149,6 +156,40 @@ if __name__ == "__main__":
         zip_flag=False,
         zip=False,
         options=dict(timeLimit=60 * 10, msg=True, logPath="log.txt", threads=8),
-        instances=["i01.json", "i02.json", "i03.json", "i04.json"],
+        # instances=["i01.json", "i02.json", "i03.json", "i04.json"],
     )
-    # get_table(zipfile_name)
+
+
+def my_table(run_name):
+    return get_table(path=os.path.join(path_to_dir, run_name), is_zip_file=False)
+
+
+def rename_files():
+    run_name = "reference"
+    my_path = os.path.join(path_to_dir, run_name)
+    for root, dirs, files in os.walk(my_path):
+        for file in files:
+            if file != "options.json":
+                continue
+            full_path = os.path.join(root, file)
+            new_path = os.path.join(root, "output_old.json")
+            my_solution = Solution.from_ihtc_json(full_path)
+            os.rename(full_path, new_path)
+            my_solution.to_json(full_path)
+
+
+if __name__ == "__main__":
+    key_names = dict(
+        old="2024-10-10T1007-system76-pc",
+        new="2024-10-10T1431-system76-pc",
+        ref="reference",
+    )
+    table_dict = {k: my_table(v) for k, v in key_names.items()}
+    for k, v in table_dict.items():
+        v[k] = v["objective"]
+        table_dict[k] = v[["name", k]]
+
+    df_merged = reduce(
+        lambda left, right: pd.merge(left, right, on=["name"], how="left"),
+        table_dict.values(),
+    )

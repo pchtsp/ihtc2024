@@ -50,9 +50,9 @@ class Batch(object):
         self.no_scenario = no_scenario
         self.scenarios = scenarios
         if exp_obj is None:
-            self.load_experiment = exp.Experiment.from_json
+            self.load_experiment = exp.Experiment.from_dir
         else:
-            self.load_experiment = exp_obj.from_json
+            self.load_experiment = exp_obj.from_dir
 
     def get_instances_paths(self):
         scenarios = self.scenarios
