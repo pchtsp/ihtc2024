@@ -107,12 +107,31 @@ class TestInstance(unittest.TestCase):
     def test_solve_test_instance_1_cpsat(self):
         my_experim_solved = self.get_solved_experiment("test01.json")
         print(my_experim_solved.get_objective())
+        my_experim_solved.run_validator(PATH_TO_VALIDATOR)
         my_experim = solvers["cpsat"](my_experim_solved.instance)
         my_experim.solve(dict(threads=8, timeLimit=30, msg=True))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         objective = my_experim.get_objective()
         print(objective)
+        my_experim.get_objective_terms().vapply(lambda v: sum(v.values()))
+        terms = my_experim.get_objective_terms()
+        my_experim.run_validator(PATH_TO_VALIDATOR)
+
+    def test_validator(self):
+        my_experim_solved = self.get_solved_experiment("test01.json")
+        print(my_experim_solved.get_objective())
+        my_experim_solved.run_validator(PATH_TO_VALIDATOR)
+
+    def test_validator2(self):
+        my_experim_solved = self.get_solved_experiment("test02.json")
+        print(my_experim_solved.get_objective())
+        my_experim_solved.run_validator(PATH_TO_VALIDATOR)
+
+    def test_validator3(self):
+        my_experim_solved = self.get_solved_experiment("test03.json")
+        print(my_experim_solved.get_objective())
+        my_experim_solved.run_validator(PATH_TO_VALIDATOR)
 
     def test_solve_competition_instance_cpsat(self):
         path_to_data = os.path.join(
@@ -158,6 +177,8 @@ class TestInstance(unittest.TestCase):
 
         print(old_objective)
         print(new_objective)
+        my_experim.run_validator(PATH_TO_VALIDATOR)
+        experiment.run_validator(PATH_TO_VALIDATOR)
 
 
 if __name__ == "__main__":

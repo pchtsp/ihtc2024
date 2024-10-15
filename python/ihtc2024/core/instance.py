@@ -218,7 +218,12 @@ class Instance(InstanceCore):
             theaters[k]["availability"] = v.take(1)
 
         nurses = self.data["nurses"].copy_deep()
-        _rows = self.data["nurse_shifts"].values_tl().to_dict(None, indices="nurse")
+        _rows = (
+            self.data["nurse_shifts"]
+            .copy_deep()
+            .values_tl()
+            .to_dict(None, indices="nurse")
+        )
         for k, v in _rows.items():
             v.vapply(lambda v: v.pop("nurse"))
             nurses[k]["working_shifts"] = v
