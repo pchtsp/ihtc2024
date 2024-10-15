@@ -10,6 +10,7 @@ from cornflow_client.core.tools import load_json
 from cornflow_client import ExperimentCore
 import json, tempfile
 import quarto
+import subprocess
 
 
 class Experiment(ExperimentCore):
@@ -62,6 +63,19 @@ class Experiment(ExperimentCore):
         if os.path.exists(solution_path):
             solution = Solution.from_json(os.path.join(path, solution_file))
         return cls(instance, solution)
+
+    def to_dir(
+        self,
+        path: str,
+        instance_file: str = "input.json",
+        solution_file: str = "output.json",
+    ) -> None:
+        instance_path = os.path.join(path, instance_file)
+        solution_path = os.path.join(path, solution_file)
+        if not os.path.exists(path):
+            os.makedirs(path)
+        self.instance.to_json(instance_path)
+        self.solution.to_json(solution_path)
 
     @classmethod
     def from_json(cls, path: str) -> "Experiment":
@@ -153,6 +167,13 @@ class Experiment(ExperimentCore):
             lambda v: not patients[v["id"]]["is_occupant"]
         ).vfilter(lambda v: v["admission_day"] not in p_days[v["id"]])
 
+        # room capacity
+        rooms_capacity = self.instance.get_rooms().get_property("capacity")
+        room_cap_err = (
+            room_usage.to_dict(indices=["room", "day"], result_col=None)
+            .vapply(len)
+            .kvfilter(lambda k, v: v > rooms_capacity[k[0]])
+        )
         return SuperDict(
             h1=gender_err,
             h2=wrong_rooms,
@@ -160,6 +181,7 @@ class Experiment(ExperimentCore):
             h4=ot_overusage,
             h5=mandatory_err,
             h6=admission_err,
+            h7=room_cap_err,
         )
 
     def get_objective_terms(self):
@@ -336,3 +358,20 @@ class Experiment(ExperimentCore):
                 operating_theater=None,
             )
         return patients
+
+    def run_validator(self, path_of_validator):
+        with tempfile.TemporaryDirectory() as tmp:
+            path_to_inst = os.path.join(tmp, "input.json")
+            path_to_sol = os.path.join(tmp, "output.json")
+            self.instance.to_ihtc_json(path_to_inst)
+            self.solution.to_ihtc_json(path_to_sol)
+            args = [os.path.abspath(path_of_validator), path_to_inst, path_to_sol]
+            # pipe = None
+            pipe = open(os.devnull, "w")
+            # pipe = open(self.optionsDict["logPath"], "w")
+            validator = subprocess.Popen(args)
+            validator.wait()
+            try:
+                pipe.close()
+            except:
+                pass

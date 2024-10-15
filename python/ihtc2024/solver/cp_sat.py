@@ -207,24 +207,11 @@ class CpSAT(Experiment):
         #         model.Add(admission[p] != d).OnlyEnforceIf(admission_bin[p, d].Not())
 
         # H2
-        banned_rooms = (
-            self.instance.get_patient_room_ban()
-            .values_tl()
-            .to_dict("room", indices="patient")
+        available_rooms__p = self.instance.get_patients_occupants_available_rooms()
+        available_rooms__p = available_rooms__p.vapply(
+            lambda v: TupList(rooms[vv]["pos"] for vv in v)
         )
-
-        available_rooms__p = patients.kvapply(
-            lambda k, v: [
-                r["pos"]
-                for r in rooms.values()
-                if r["id"] not in banned_rooms.get(k, [])
-            ]
-        )
-        # occupants have a fixed room:
-        occupants_rooms = occupants.get_property("room_id").vapply(
-            lambda v: [rooms[v]["pos"]]
-        )
-        available_rooms__p = SuperDict(**available_rooms__p, **occupants_rooms)
+        # TODO: add room capacity constraint
 
         # variable
         # occupants have a fixed room
@@ -237,6 +224,23 @@ class CpSAT(Experiment):
                 )
             )
         )
+        domain__p_r_d = TupList(
+            [
+                (p, r, d)
+                for p, rr in available_rooms__p.items()
+                for r in rr
+                for d in possible_stay[p]
+            ]
+        )
+        room__p_r_d = domain__p_r_d.to_dict(None).vapply(
+            lambda v: model.NewBoolVar(f"room_{v[0]}_{v[1]}_{v[2]}")
+        )
+        # we tie room_p_r_d to room and stay:
+        for p, r, d in domain__p_r_d:
+            model.Add(room__p_r_d[p, r, d] == 1).OnlyEnforceIf(
+                room_binary[p, r], stay_bin[p, d]
+            )
+
         # patients that are mandatory will always have a room.
         # occupants are considered mandatory (so default: True)
         available_rooms__p_with_dummy = available_rooms__p.kvapply(
@@ -539,16 +543,22 @@ class CpSAT(Experiment):
             # if they share the same gender, we need to register if they share a room
             if gender[p1] == gender[p2]:
                 model.Add(share_room[p1, p2, room_pos, d] == 1).OnlyEnforceIf(
-                    stay_bin[p1, d],
-                    stay_bin[p2, d],
-                    room_binary[p1, room_pos],
-                    room_binary[p2, room_pos],
+                    room__p_r_d[p1, room_pos, d], room__p_r_d[p2, room_pos, d]
                 )
             else:
-                # they cannot share a room
+                # if they share gender they cannot share a room
                 model.Add(
-                    room_binary[p1, room_pos] + room_binary[p2, room_pos] <= 1
-                ).OnlyEnforceIf(stay_bin[p1, d], stay_bin[p2, d])
+                    room__p_r_d[p1, room_pos, d] + room__p_r_d[p2, room_pos, d] <= 1
+                )
+
+        # room capacity
+        room_capacity = rooms.values_tl().to_dict(
+            "capacity", indices="pos", is_list=False
+        )
+        patients__r_d = domain__p_r_d.to_dict(0)
+        for (room_pos, day), _patients in patients__r_d.items():
+            _patients_in_room = [room__p_r_d[p, room_pos, day] for p in _patients]
+            model.Add(my_sum(_patients_in_room) <= room_capacity[room_pos])
 
         # S1
         agegroups = self.instance.get_agegroups()

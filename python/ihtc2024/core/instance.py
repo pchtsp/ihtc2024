@@ -69,8 +69,7 @@ class Instance(InstanceCore):
         return cls(data)
 
     @classmethod
-    def from_ihtc_json(cls, path: str, content: str = None) -> "Instance":
-        # TODO: parametrize this
+    def from_ihtc_json(cls, path: str, content: dict = None) -> "Instance":
         if content is None:
             with open(path, "r") as f:
                 content = json.load(f)
@@ -83,7 +82,7 @@ class Instance(InstanceCore):
         data["occupants"] = TupList(content["occupants"]).vapply(
             filter_keys, ["id", "gender", "age_group", "length_of_stay", "room_id"]
         )
-        # default value of due_day -> last day for non-mandatory
+        # default value of due_day -> -1 for non-mandatory
         data["patients"] = (
             TupList(content["patients"])
             .vapply_col(
@@ -154,14 +153,98 @@ class Instance(InstanceCore):
             data[table] = [
                 SuperDict(id=st, pos=pos) for pos, st in enumerate(content[table])
             ]
-            # data[table] = [{"id": st for st in content[table]}]
-        parameters = ["days"]
+        parameters = ["days", "skill_levels"]
         data["parameters"] = SuperDict({p: content[p] for p in parameters})
         return cls.from_dict(data)
 
     def to_ihtc_json(self, path: str) -> None:
-        # TODO: this
-        content = generic_to_dict(self.data, TABLE_KEYS)
+
+        patients = self.data["patients"].copy_deep()
+        _rows = (
+            self.data["patient_shifts"]
+            .values_tl()
+            .to_dict(
+                ["pos_shift", "workload_produced", "skill_level_required"],
+                indices="patient",
+            )
+            .vapply(sorted)
+            .vapply(TupList)
+        )
+        for p, elem in _rows.items():
+            patients[p]["workload_produced"] = elem.take(1)
+            patients[p]["skill_level_required"] = elem.take(2)
+
+        incompatible = (
+            self.data["patient_room_ban"].values_tl().to_dict("room", indices="patient")
+        )
+        for k, v in incompatible.items():
+            patients[k]["incompatible_room_ids"] = v
+
+        occupants = self.data["occupants"].copy_deep()
+        _rows = (
+            self.data["occupant_shifts"]
+            .values_tl()
+            .to_dict(
+                ["shift", "workload_produced", "skill_level_required"],
+                indices="occupant",
+            )
+            .vapply(sorted)
+            .vapply(TupList)
+        )
+        for p, elem in _rows.items():
+            occupants[p]["workload_produced"] = elem.take(1)
+            occupants[p]["skill_level_required"] = elem.take(2)
+
+        surgeons = self.data["surgeons"].copy_deep()
+        _rows = (
+            self.data["surgeon_days"]
+            .values_tl()
+            .to_dict(["day", "max_surgery_time"], indices="surgeon")
+            .vapply(sorted)
+            .vapply(TupList)
+        )
+        for k, v in _rows.items():
+            surgeons[k]["max_surgery_time"] = v.take(1)
+
+        theaters = self.data["operating_theaters"].copy_deep()
+        _rows = (
+            self.data["operating_theater_days"]
+            .values_tl()
+            .to_dict(["day", "availability"], indices="operating_theater")
+            .vapply(sorted)
+            .vapply(TupList)
+        )
+        for k, v in _rows.items():
+            theaters[k]["availability"] = v.take(1)
+
+        nurses = self.data["nurses"].copy_deep()
+        _rows = self.data["nurse_shifts"].values_tl().to_dict(None, indices="nurse")
+        for k, v in _rows.items():
+            v.vapply(lambda v: v.pop("nurse"))
+            nurses[k]["working_shifts"] = v
+        content = SuperDict()
+        for v, k in [
+            (self.data["rooms"].copy_deep(), "rooms"),
+            (patients, "patients"),
+            (occupants, "occupants"),
+            (surgeons, "surgeons"),
+            (theaters, "operating_theaters"),
+            (nurses, "nurses"),
+        ]:
+            content[k] = v
+
+        content = generic_to_dict(content, TABLE_KEYS)
+
+        content["weights"] = self.data["weights"]
+        content["days"] = self.data["parameters"]["days"]
+        content["skill_levels"] = self.data["parameters"]["skill_levels"]
+        content["shift_types"] = (
+            self.data["shift_types"].values_tl().take(["pos", "id"]).sorted().take(1)
+        )
+        content["age_groups"] = (
+            self.data["age_groups"].values_tl().take(["pos", "id"]).sorted().take(1)
+        )
+
         with open(path, "w") as f:
             json.dump(content, f)
         return None
@@ -174,6 +257,9 @@ class Instance(InstanceCore):
 
     def get_horizon_size_days(self) -> int:
         return self.data["parameters"]["days"]
+
+    def get_num_skill_levels(self) -> int:
+        return self.data["parameters"]["skill_levels"]
 
     def get_horizon_size_shifts(self) -> int:
         return self.data["parameters"]["days"] * self.get_length_day()
@@ -307,3 +393,22 @@ class Instance(InstanceCore):
             elem.pop("occupant")
         needs__p_s.update(needs__o_s)
         return needs__p_s
+
+    def get_patients_occupants_available_rooms(self):
+        banned_rooms = (
+            self.get_patient_room_ban().values_tl().to_dict("room", indices="patient")
+        )
+        rooms = self.get_rooms()
+        patients = self.get_patients()
+        available_rooms__p = patients.kvapply(
+            lambda k, v: [
+                r["id"]
+                for r in rooms.values()
+                if r["id"] not in banned_rooms.get(k, [])
+            ]
+        )
+        # occupants have a fixed room:
+        occupants = self.get_occupants()
+        occupants_rooms = occupants.get_property("room_id").vapply(lambda v: [v])
+        available_rooms__p = SuperDict(**available_rooms__p, **occupants_rooms)
+        return available_rooms__p

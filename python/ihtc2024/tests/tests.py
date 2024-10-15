@@ -10,6 +10,7 @@ root_dir = os.path.join(tests_dir, "../")
 my_paths = [root_dir]
 for __my_path in my_paths:
     sys.path.insert(1, __my_path)
+PATH_TO_VALIDATOR = os.path.join(root_dir, "../../validator/IHTP_Validator")
 
 
 class TestInstance(unittest.TestCase):
@@ -87,6 +88,7 @@ class TestInstance(unittest.TestCase):
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         objective = my_experim.get_objective()
         print(objective)
+        my_experim.run_validator(PATH_TO_VALIDATOR)
 
     def get_solved_experiment(self, test_instance_name):
         path_to_data = os.path.join(tests_dir, "../../../data/")
