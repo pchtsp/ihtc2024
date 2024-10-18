@@ -110,7 +110,7 @@ class CpSAT(Experiment):
             for d in days:
                 last_date = min(d + length_of_stay[p], horizon_days_size)
                 for d2 in range(d, last_date):
-                    model.Add(stay_bin[p, d2] == 1).OnlyEnforceIf(admission_bin[p, d])
+                    model.AddImplication(admission_bin[p, d], stay_bin[p, d2])
 
         # # tie the binary with the decision variable:
         # for p, days in possible_start.items():
@@ -153,10 +153,15 @@ class CpSAT(Experiment):
             }
         )
         # definition
+        # https://groups.google.com/g/or-tools-discuss/c/9trLOMSe_DA
         for ot, p, d in domain__ot_p_d:
-            model.Add(assigned__ot_p_d[ot, p, d] == 1).OnlyEnforceIf(
-                admission_bin[p, d]
-            ).OnlyEnforceIf(theater_bin[p, ot])
+            # assigned_ot_pd = and(admission_bin, theater_bin)
+            multiple_ands(
+                model,
+                assigned__ot_p_d[ot, p, d],
+                admission_bin[p, d],
+                theater_bin[p, ot],
+            )
 
         # binary if surgeon works in ot in day d
         worked__s_ot_d = SuperDict(
@@ -237,8 +242,9 @@ class CpSAT(Experiment):
         )
         # we tie room_p_r_d to room and stay:
         for p, r, d in domain__p_r_d:
-            model.Add(room__p_r_d[p, r, d] == 1).OnlyEnforceIf(
-                room_binary[p, r], stay_bin[p, d]
+            # room__p_r_d = and(room_binary, stay_bin)
+            multiple_ands(
+                model, room__p_r_d[p, r, d], room_binary[p, r], stay_bin[p, d]
             )
 
         # patients that are mandatory will always have a room.
@@ -360,11 +366,15 @@ class CpSAT(Experiment):
                 nurse_patient__n_p_s[n, p, s].Not(), stay_bin[p, _day]
             )
             # if the patient is not staying that shift, no nurse is assigned
-            model.Add(nurse_patient__n_p_s[n, p, s] <= stay_bin[p, _day])
+            model.AddImplication(nurse_patient__n_p_s[n, p, s], stay_bin[p, _day])
+            # model.Add(nurse_patient__n_p_s[n, p, s] <= stay_bin[p, _day])
 
             # S3
             # if a nurse treats once, we count
-            model.Add(nurse_patient__n_p[n, p] >= nurse_patient__n_p_s[n, p, s])
+            model.AddImplication(
+                nurse_patient__n_p_s[n, p, s], nurse_patient__n_p[n, p]
+            )
+            # model.Add(nurse_patient__n_p[n, p] >= nurse_patient__n_p_s[n, p, s])
 
         # S4 maximum workload
         domain_n_p_s__n_s = domain_n_p_s.to_dict(1)
@@ -542,14 +552,28 @@ class CpSAT(Experiment):
         for p1, p2, room_pos, d in shared_room_domain__p1_p2_r_d:
             # if they share the same gender, we need to register if they share a room
             if gender[p1] == gender[p2]:
-                model.Add(share_room[p1, p2, room_pos, d] == 1).OnlyEnforceIf(
-                    room__p_r_d[p1, room_pos, d], room__p_r_d[p2, room_pos, d]
+                multiple_ands(
+                    model,
+                    share_room[p1, p2, room_pos, d],
+                    room__p_r_d[p1, room_pos, d],
+                    room__p_r_d[p2, room_pos, d],
                 )
+                # model.Add(share_room[p1, p2, room_pos, d] == 1).OnlyEnforceIf(
+                #     room__p_r_d[p1, room_pos, d], room__p_r_d[p2, room_pos, d]
+                # )
             else:
                 # if they share gender they cannot share a room
-                model.Add(
-                    room__p_r_d[p1, room_pos, d] + room__p_r_d[p2, room_pos, d] <= 1
+                model.AddImplication(
+                    room__p_r_d[p1, room_pos, d],
+                    negate_var_bool(room__p_r_d[p2, room_pos, d]),
                 )
+                model.AddImplication(
+                    room__p_r_d[p2, room_pos, d],
+                    negate_var_bool(room__p_r_d[p1, room_pos, d]),
+                )
+                # model.Add(
+                #     room__p_r_d[p1, room_pos, d] + room__p_r_d[p2, room_pos, d] <= 1
+                # )
 
         # room capacity
         room_capacity = rooms.values_tl().to_dict(
@@ -918,3 +942,13 @@ def stdout_redirected(to=os.devnull, stdout=None):
             # NOTE: dup2 makes stdout_fd inheritable unconditionally
             stdout.flush()
             os.dup2(copied.fileno(), stdout_fd)  # $ exec >&copied
+
+
+def multiple_ands(model: cp_model.CpModel, result, *ands):
+    nots = [negate_var_bool(a) for a in ands]
+    # if all the ands are false, then the result is false
+    model.AddBoolOr(result, *nots)
+    for a in ands:
+        # if result is true, then all the ands are true
+        model.AddImplication(result, a)
+        model.AddImplication(result, a)

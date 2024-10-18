@@ -134,6 +134,7 @@ def get_table(path: str, is_zip_file=True):
 
 
 def my_benchmark():
+    path_to_dir = "/home/pchtsp/Documents/projects/ihtc2024/results"
     path_in = "/home/pchtsp/Documents/projects/ihtc2024/data/"
     # scenarios = ["ihtc2024_competition_instances"]
     scenarios = ["ihtc2024_test_dataset"]
@@ -155,8 +156,8 @@ def my_benchmark():
         path_in=path_in,
         zip_flag=False,
         zip=False,
-        options=dict(timeLimit=60 * 10, msg=True, logPath="log.txt", threads=8),
-        # instances=["i01.json", "i02.json", "i03.json", "i04.json"],
+        options=dict(timeLimit=60 * 20, msg=True, logPath="log.txt", threads=4),
+        instances=[f"i0{i}.json" for i in range(1, 10)],
     )
 
 
@@ -179,17 +180,18 @@ def rename_files():
 
 
 if __name__ == "__main__":
-    key_names = dict(
-        old="2024-10-10T1007-system76-pc",
-        new="2024-10-10T1431-system76-pc",
-        ref="reference",
-    )
-    table_dict = {k: my_table(v) for k, v in key_names.items()}
-    for k, v in table_dict.items():
-        v[k] = v["objective"]
-        table_dict[k] = v[["name", k]]
-
-    df_merged = reduce(
-        lambda left, right: pd.merge(left, right, on=["name"], how="left"),
-        table_dict.values(),
-    )
+    my_benchmark()
+    # key_names = dict(
+    #     old="2024-10-10T1007-system76-pc",
+    #     new="2024-10-10T1431-system76-pc",
+    #     ref="reference",
+    # )
+    # table_dict = {k: my_table(v) for k, v in key_names.items()}
+    # for k, v in table_dict.items():
+    #     v[k] = v["objective"]
+    #     table_dict[k] = v[["name", k]]
+    #
+    # df_merged = reduce(
+    #     lambda left, right: pd.merge(left, right, on=["name"], how="left"),
+    #     table_dict.values(),
+    # )

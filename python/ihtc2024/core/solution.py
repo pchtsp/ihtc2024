@@ -86,3 +86,10 @@ class Solution(SolutionCore):
 
     def get_nurse_assignment(self):
         return self.data["nurse_assignment"]
+
+    def unassign_patient(self, patient):
+        return self.data["patient_assignment"].pop(patient, None)
+
+    def assign_patient(self, assignment):
+        self.data["patient_assignment"][assignment["id"]] = assignment
+        return 1

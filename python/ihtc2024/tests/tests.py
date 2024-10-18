@@ -1,9 +1,17 @@
 import unittest
 import json
-
+import random
+import numpy as np
+import multiprocessing as multi
 from ihtc2024 import Instance, Solution, Experiment, solvers
-
+from ihtc2024.graph import patient_to_graph
+from pytups import SuperDict
+import time
 import os, sys
+import logging as log
+
+from ihtc2024.graph.node import get_source_node
+import graph_tool.all as gt
 
 tests_dir = os.path.dirname(__file__)
 root_dir = os.path.join(tests_dir, "../")
@@ -164,7 +172,6 @@ class TestInstance(unittest.TestCase):
     def test_hint_solution(self):
         # for name in [f"test0{i}.json" for i in range(1, 6)]:
         name = "test05.json"
-        # print(name)
         experiment = self.get_solved_experiment(name)
         my_experim = solvers["cpsat"](experiment.instance, experiment.solution)
         old_objective = my_experim.get_objective()
@@ -179,6 +186,123 @@ class TestInstance(unittest.TestCase):
         print(new_objective)
         my_experim.run_validator(PATH_TO_VALIDATOR)
         experiment.run_validator(PATH_TO_VALIDATOR)
+
+    def test_create_patient_graph(self):
+        time_init = time.time()
+        my_experim = solvers["cpsat"](self.instance, self.solution)
+        my_experim = self.get_solved_experiment("test01.json")
+        my_instance = my_experim.instance
+        patients_occupants = my_instance.get_patients_occupants()
+        print(my_experim.get_objective())
+        some_patient = patients_occupants.values_tl(0)["id"]
+        graphs = {}
+        # patients_occupants = random.sample(patients_occupants.keys_tl(), )
+        # my_graph = patient_to_graph(my_instance, 5)
+        my_graph = patient_to_graph(my_instance, 5)
+
+        # my_graph.draw()
+        # source = my_graph.get_source_node()
+        # sink = my_graph.get_sink_node()
+        # all_paths_iter = gt.all_paths(
+        #     my_graph.g, source=source, target=sink, edges=False
+        # )
+        # first_path = next(all_paths_iter)
+        # second_path = next(all_paths_iter)
+        # for a, b in zip(first_path, second_path):
+        #     print(a == b)
+        # first_path[-1]
+        # second_path[-1]
+        # trio of start, room, length of stay?
+        # while sampling the possible starts of optionals
+        # all_nodes = my_graph.refs.keys_tl()
+        # all_nodes.vfilter(lambda v: v.shift == 3)
+        # all_paths = [[my_graph.refs_inv[n] for n in p] for p in all_paths_iter]
+        # pp = my_experim.instance.get_patients_occupants()
+        # pp.vfilter(lambda v: v["length_of_stay"] > 6)
+        # my_experim.instance.get_patients_occupants().get_property("length_of_stay")
+        # my_experim.instance.get_patient_occupants_available_starts()
+        # my_experim.instance.get_horizon_size_days()
+        #
+        # all_paths[0]
+        # all_paths[10]
+        # len(all_paths)
+        # day_nodes = [
+        #     my_graph.refs_inv[n] for n in my_graph.g.get_out_neighbours(source)
+        # ]
+        # theater_nodes = [
+        #     my_graph.refs_inv[n]
+        #     for n in my_graph.g.get_out_neighbours(my_graph.refs[day_nodes[0]])
+        # ]
+        # room_nodes = [
+        #     my_graph.refs_inv[n]
+        #     for n in my_graph.g.get_out_neighbours(my_graph.refs[theater_nodes[0]])
+        # ]
+        # nurse_nodes = [
+        #     my_graph.refs_inv[n]
+        #     for n in my_graph.g.get_out_neighbours(my_graph.refs[room_nodes[0]])
+        # ]
+        # nurse_nodes2 = [
+        #     my_graph.refs_inv[n]
+        #     for n in my_graph.g.get_out_neighbours(my_graph.refs[nurse_nodes[0]])
+        # ]
+        # for some_patient in patients_occupants:
+        #     print(f"Graph: {some_patient}")
+        #     graphs[some_patient] = patient_to_graph(my_instance, some_patient, 5)
+        # num_workers = 8
+        # results = SuperDict()
+        time_now = time.time() - time_init
+        print(time_now)
+        # print(
+        #     "time={}, current={}, errors={}".format(round(time_now), objective, errors)
+        # )
+        # with multi.Pool(processes=num_workers) as pool:
+        #     for some_patient in patients_occupants:
+        #         _instance = my_instance.copy()
+        #         results[some_patient] = pool.apply_async(
+        #             patient_to_graph, [_instance, some_patient, 3]
+        #         )
+        #     for p, result in results.items():
+        #         graphs[p] = result.get(timeout=10000)
+        # objective = my_experim.get_objective()
+        # errors = my_experim.check_solution()
+        # time_now = time.time() - time_init
+        # print(
+        #     "time={}, current={}, errors={}".format(round(time_now), objective, errors)
+        # )
+        # for some_patient in patients_occupants:
+        #     print(f"Pattern: {some_patient}")
+        #     assignment = my_experim.solution.unassign_patient(some_patient)
+        #     errors = my_experim.get_objective_terms_raw()
+        #     errors = {
+        #         **errors,
+        #         **my_experim.calculate_coupling_checks(),
+        #         "workload_room": my_experim.get_workload_room(),
+        #     }
+        #
+        #     pattern = my_graph.nodes_to_pattern(None, None, errors, some_patient, {})
+        #     success = my_experim.apply_pattern(pattern)
+        #     if not success:
+        #         print("Pattern not applied")
+        #         my_experim.solution.assign_patient(assignment)
+        #     print("Pattern applied")
+        #     objective = my_experim.get_objective()
+        #     errors = my_experim.check_solution()
+        #     time_now = time.time() - time_init
+        #     print(
+        #         "time={}, current={}, errors={}".format(
+        #             round(time_now), objective, errors
+        #         )
+        #     )
+        # print(time_now)
+        # print(my_experim.get_objective())
+        # some_graph.draw()
+        # len(my_graph.g.get_vertices())
+        # len(my_graph.g.get_edges())
+        # my_graph.g.get_out_degrees(my_graph.g.get_vertices())
+        # max(my_graph.g.get_out_degrees(my_graph.g.get_vertices()))
+        # # import numpy as np
+        #
+        # np.histogram(my_graph.g.get_out_degrees(my_graph.g.get_vertices()), bins=8)
 
 
 if __name__ == "__main__":

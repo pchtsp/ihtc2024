@@ -7,6 +7,11 @@ jsonschema
 pytups
 orloge
 click
+pycairo
+PyGObject
+webcolors
+network2tikz
+orjson
 
 # quarto
 plotnine
