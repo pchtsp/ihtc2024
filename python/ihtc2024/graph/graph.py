@@ -20,25 +20,30 @@ class GraphTool(object):
     def __init__(self, instance, nodes_ady: Dict[Node, Node]):
         self.instance = instance
         self.sink = get_sink_node(instance)
-
-        # self.patient_info = self.instance.get_patients_occupants()[self.patient]
-
         self.g = gr.Graph(directed=True)
-        edges = nodes_ady.to_tuplist()
-        nodes = (edges.take(0) + edges.take(1)).unique2()
+        edges = [(key, value) for key, values in nodes_ady.items() for value in values]
+        edges_arr = np.array(edges)
+        nodes = list(set(np.concatenate((edges_arr[:, 0], edges_arr[:, 1]))))
         vertices = self.g.add_vertex(len(nodes))
         self.refs = SuperDict({node: int(v) for node, v in zip(nodes, vertices)})
         self.refs_inv = self.refs.reverse()
-        edges_list = edges.vapply(lambda v: (self.refs[v[0]], self.refs[v[1]]))
+
+        vectorized_map = np.vectorize(self.refs.get)
+        edges_list = vectorized_map(edges_arr)
         self.g.add_edge_list(edges_list)
 
         # delete nodes with infinite distance to sink:
         self.g.set_reversed(is_reversed=True)
         distances = self.shortest_path(node1=self.sink)
         max_dist = instance.get_horizon_size_shifts() + 5
-        nodes_to_remove = [n for n in self.g.vertices() if distances[n] > max_dist]
+
+        remove = self.g.new_vp("bool", val=True)
+        remove.a[distances.get_array() > max_dist] = False
+        # nodes_to_remove = [v for v in self.g.vertices() if remove[v]]
+        # nodes_to_remove = [n for n in self.g.vertices() if distances[n] > max_dist]
         self.g.set_reversed(is_reversed=False)
-        self.g.remove_vertex(nodes_to_remove, fast=True)
+        self.g = gr.GraphView(self.g, vfilt=remove)
+        # self.g.remove_vertex(nodes_to_remove, fast=True)
         self.g.shrink_to_fit()
         self.g.reindex_edges()
 
@@ -520,11 +525,13 @@ def find_vertex(graph, refs, node):
 # . apply path if improvement
 
 
-def patient_to_graph(instance, max_neighbors):
+def patient_to_graph(instance, max_neighbors, max_nurses):
     print(f"Graph started")
     nodes_ady = SuperDict()
     source = get_source_node(instance)
-    nodes_ady = source.walk_over_nodes(nodes_ady, max_neighbors=max_neighbors)
+    nodes_ady = source.walk_over_nodes(
+        nodes_ady, max_neighbors=max_neighbors, max_nurses=max_nurses
+    )
     graph = GraphTool(instance=instance, nodes_ady=nodes_ady)
     return graph
 

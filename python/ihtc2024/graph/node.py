@@ -113,7 +113,9 @@ class Node(object):
 
     def get_nurses_by_shift(self):
         if self.__nurses__s is None:
-            self.__nurses__s = self.instance.get_nurse_shift().keys_tl().to_dict()
+            self.__nurses__s = (
+                self.instance.get_nurse_shift().keys_tl().to_dict().vapply(set)
+            )
         return self.__nurses__s
 
     def get_patients_occupants(self):
@@ -174,7 +176,7 @@ class Node(object):
 
         return new_node
 
-    def get_adjacent_shift(self):
+    def get_adjacent_shift(self, max_nurses):
         nurses__s = self.get_nurses_by_shift()
         if self.pos_shift >= 0:
             new_shift = self.shift + 1
@@ -182,11 +184,16 @@ class Node(object):
         else:
             new_shift = self.shift
             pos_shift = 0
+        my_nurses = nurses__s[new_shift]
+        if len(self.hist_nurses) == max_nurses:
+            my_nurses &= self.hist_nurses.keys()
+        if len(my_nurses) == 0:
+            my_nurses = [list(nurses__s[new_shift])[0]]
         return [
             Node.from_node(
                 self, nurse=n, shift=new_shift, pos_shift=pos_shift, type=TYPE.NURSE
             )
-            for n in nurses__s[new_shift]
+            for n in my_nurses
         ]
 
     def get_adjacency_rooms(self):
@@ -238,7 +245,7 @@ class Node(object):
         #     for th in theaters
         # ]
 
-    def get_adjacency_list(self, sink_node, my_lengths):
+    def get_adjacency_list(self, sink_node, my_lengths, max_nurses):
         all_last_pos_shift = []
         max_post_shift = 1000
         if self.type == TYPE.NURSE:
@@ -257,7 +264,7 @@ class Node(object):
             adjacent = self.get_adjacency_rooms()
         else:
             # type=room or type=nurse
-            adjacent = self.get_adjacent_shift()
+            adjacent = self.get_adjacent_shift(max_nurses)
         # if len(adjacent) > max_neighbors:
         #     adjacent = rn.sample(adjacent, max_neighbors)
         # after sampling, we consider adding the optional arc
@@ -270,7 +277,7 @@ class Node(object):
                 adjacent = adjacent + [sink_node]
         return adjacent
 
-    def walk_over_nodes(self, cache_neighbors=None, max_neighbors=5):
+    def walk_over_nodes(self, cache_neighbors=None, max_neighbors=5, max_nurses=10):
         """
 
         :param node: node from where we start the DFS
@@ -329,7 +336,7 @@ class Node(object):
                 # I don't have any cache of the node.
                 # I'll get neighbors and do cache
                 cache_neighbors[node] = neighbors = node.get_adjacency_list(
-                    last_node, my_lengths
+                    last_node, my_lengths, max_nurses
                 )
                 # since the node is new, we want to visit its neighbors
                 remaining_nodes += neighbors

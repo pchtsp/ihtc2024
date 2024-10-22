@@ -11,7 +11,7 @@ import os, sys
 import logging as log
 
 from ihtc2024.graph.node import get_source_node
-import graph_tool.all as gt
+from ihtc2024.graph.graph import GraphTool
 
 tests_dir = os.path.dirname(__file__)
 root_dir = os.path.join(tests_dir, "../")
@@ -190,7 +190,7 @@ class TestInstance(unittest.TestCase):
     def test_create_patient_graph(self):
         time_init = time.time()
         my_experim = solvers["cpsat"](self.instance, self.solution)
-        my_experim = self.get_solved_experiment("test01.json")
+        my_experim = self.get_solved_experiment("test04.json")
         my_instance = my_experim.instance
         patients_occupants = my_instance.get_patients_occupants()
         print(my_experim.get_objective())
@@ -198,7 +198,13 @@ class TestInstance(unittest.TestCase):
         graphs = {}
         # patients_occupants = random.sample(patients_occupants.keys_tl(), )
         # my_graph = patient_to_graph(my_instance, 5)
-        my_graph = patient_to_graph(my_instance, 5)
+        nodes_ady = SuperDict()
+        source = get_source_node(my_instance)
+        nodes_ady = source.walk_over_nodes(nodes_ady, max_neighbors=5, max_nurses=7)
+        print(time.time() - time_init)
+        graph = GraphTool(instance=my_instance, nodes_ady=nodes_ady)
+        print(time.time() - time_init)
+        # my_graph = patient_to_graph(my_instance, max_neighbors=10, max_nurses=7)
 
         # my_graph.draw()
         # source = my_graph.get_source_node()
@@ -250,8 +256,6 @@ class TestInstance(unittest.TestCase):
         #     graphs[some_patient] = patient_to_graph(my_instance, some_patient, 5)
         # num_workers = 8
         # results = SuperDict()
-        time_now = time.time() - time_init
-        print(time_now)
         # print(
         #     "time={}, current={}, errors={}".format(round(time_now), objective, errors)
         # )
