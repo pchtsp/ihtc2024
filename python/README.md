@@ -2,6 +2,19 @@
 
 Check the [IHTC 2024 competition website](https://ihtc2024.github.io/) for more information.
 
+## Installation
+
+Most dependencies are managed by creating a python virtual environment:
+
+```
+cd ihtc2024/python/
+python -m venv .venv
+.venv/Scripts/activate
+pip install -r requirements-dev.txt
+```
+
+For graph functionality, graph-tool is used and it's a bit tricky.
+
 Check instructions for installing graph tool here:
 https://graph-tool.skewed.de/installation.html#debian-ubuntu-gnulinux
 
