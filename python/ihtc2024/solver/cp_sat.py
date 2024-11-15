@@ -31,13 +31,13 @@ class CpSAT(Experiment):
         patients = self.instance.get_patients()
         possible_start = self.instance.get_patient_occupants_available_starts()
         # we sample the possible starts.
-        max_sample = 10
-
-        def sample_days(day_range):
-            my_sample = rn.sample(day_range, k=min(max_sample, len(day_range)))
-            return sorted(my_sample)
-
-        possible_start = possible_start.vapply(sample_days)
+        # max_sample = 10
+        #
+        # def sample_days(day_range):
+        #     my_sample = rn.sample(day_range, k=min(max_sample, len(day_range)))
+        #     return sorted(my_sample)
+        #
+        # possible_start = possible_start.vapply(sample_days)
 
         nurse_shifts = self.instance.get_nurse_shift()
         operation_theaters = self.instance.get_operatingtheaters().copy_deep()
