@@ -123,7 +123,7 @@ class Experiment(ExperimentCore):
         surgeons_cap = self.instance.get_surgeon_capacity().get_property(
             "max_surgery_time"
         )
-        surgeon_overtime = (
+        surgeon_use = (
             p_assignment.values_tl()
             # only new patients, not occupants
             .vfilter(lambda v: not patients[v["id"]]["is_occupant"])
@@ -132,12 +132,12 @@ class Experiment(ExperimentCore):
             .vapply_col("duration", lambda v: patients[v["id"]]["surgery_duration"])
             .to_dict("duration", indices=["surgeon", "admission_day"])
             .vapply(sum)
-            .kvapply(lambda k, v: v - surgeons_cap[k])
         )
+        surgeon_overtime = surgeons_cap.kvapply(lambda k, v: surgeon_use.get(k, 0) - v)
         ot_capacity = self.instance.get_operatingtheater_capacity().get_property(
             "availability"
         )
-        ot_overtime = (
+        ot_use = (
             p_assignment.values_tl()
             # only new patients, not occupants
             .vfilter(lambda v: not patients[v["id"]]["is_occupant"])
@@ -145,8 +145,8 @@ class Experiment(ExperimentCore):
             .vapply_col("duration", lambda v: patients[v["id"]]["surgery_duration"])
             .to_dict("duration", indices=["operating_theater", "admission_day"])
             .vapply(sum)
-            .kvapply(lambda k, v: v - ot_capacity[k])
         )
+        ot_overtime = ot_capacity.kvapply(lambda k, v: ot_use.get(k, 0) - v)
 
         rooms_capacity = self.instance.get_rooms().get_property("capacity")
         capacity_overuse = (
@@ -435,29 +435,34 @@ class Experiment(ExperimentCore):
             except:
                 pass
 
-    def apply_pattern(self, pattern):
+    def apply_pattern(self, pattern, patient_info):
         # pattern is a list of nodes
         # I need to make the assignments for the patient: room, theater, admission
         # I need to make the assignments for nurses: per shift and room
         # I can start in node 4
+        if len(pattern) == 0:
+            raise ValueError("Pattern is empty")
         assignments = self.solution.get_patient_assignment()
         if len(pattern) == 2:
             # we decided to not take the patient.
             return 0
-        # theater_node is position 2 I think
-        theater_node = 2
-        theater = pattern[theater_node].theater
         my_node = 4
-        start_node = pattern[my_node]
-        admission_day = start_node.shift // 3
-        room = start_node.room
-        patient = start_node.patient
-        assignments[patient] = SuperDict(
-            id=patient,
-            admission_day=admission_day,
-            room=room,
-            operating_theater=theater,
-        )
+        # occupants are already assigned
+        if not patient_info["is_occupant"]:
+            # theater_node is position 2 I think
+            theater_node = 2
+            theater = pattern[theater_node].theater
+            start_node = pattern[my_node]
+            admission_day = start_node.shift // 3
+            room = start_node.room
+            patient = patient_info["id"]
+            assignments[patient] = SuperDict(
+                id=patient,
+                admission_day=admission_day,
+                room=room,
+                operating_theater=theater,
+            )
+
         new_nurse_assignments = pattern[my_node:-1]
         nurse_assignments = self.solution.get_nurse_assignment()
         get_shift_type = self.instance.get_shiftype_from_shift

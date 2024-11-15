@@ -5,7 +5,7 @@
 import graph_tool.all as gr
 from pytups import SuperDict
 
-from .node import get_source_node, get_sink_node, Node, TYPE
+from .node import get_source_node, get_sink_node, get_theater_occupant, Node, TYPE
 import logging as log
 
 from typing import Dict
@@ -69,14 +69,15 @@ class GraphTool(object):
         # workload needs
         self.needs_wl_vp = self.g.new_vp("int")
         # service level needs
-        self.skill_deficit = self.g.new_vp("int")
+        self.skill_level_vp = self.g.new_vp("int", val=0)
+        self.max_load_vp = self.g.new_vp("int", val=0)
+        # get a dictionary with a list of nodes for each nurse and shift combination:
+        self.nodes__n_s = SuperDict()
+        self.nodes__r_s = SuperDict()
+        self.nodes__pos = SuperDict()
 
-        # needs_patient = self.instance.get_patients_occupants_needs().to_dictdict()[
-        #     self.patient
-        # ]
-        # needs_wl = needs_patient.get_property("workload_produced")
-        # needs_sl = needs_patient.get_property("skill_level_required")
-        # nurse_sl = self.instance.get_nurses().get_property("skill_level")
+        nurse_sl = self.instance.get_nurses().get_property("skill_level")
+        nurse_ml = self.instance.get_nurse_shift().get_property("max_load")
 
         for v in self.g.vertices():
             node = self.refs_inv[v]
@@ -86,14 +87,37 @@ class GraphTool(object):
             self.room_vp[v] = self._equiv_room[node.room]
             self.shift_vp[v] = node.shift
             self.pos_shift_vp[v] = node.pos_shift
-            # if node.type == TYPE.NURSE:
-            #     self.skill_deficit[v] = max(
-            #         0, needs_sl[node.pos_shift] - nurse_sl[node.nurse]
-            #     )
-            #     self.needs_wl_vp[v] = needs_wl[node.pos_shift]
-            # else:
-            #     self.skill_deficit[v] = 0
-            #     self.needs_wl_vp[v] = 0
+
+            if node.type != TYPE.NURSE:
+                continue
+            self.skill_level_vp[v] = nurse_sl[node.nurse]
+            self.max_load_vp[v] = nurse_ml[node.nurse, node.shift]
+
+            vertex_i = self.g.vertex_index[v]
+            pos_shift = node.pos_shift
+            if pos_shift not in self.nodes__pos:
+                self.nodes__pos[pos_shift] = []
+            self.nodes__pos[pos_shift].append(vertex_i)
+            nurse_shift = (node.nurse, node.shift)
+            room_shift = (node.room, node.shift)
+            if nurse_shift not in self.nodes__n_s:
+                self.nodes__n_s[nurse_shift] = []
+            self.nodes__n_s[nurse_shift].append(vertex_i)
+            if room_shift not in self.nodes__r_s:
+                self.nodes__r_s[room_shift] = []
+            self.nodes__r_s[room_shift].append(vertex_i)
+
+        # for each patient_occupant, we create a view of the graph
+        # that filters the nodes and edges that are not feasible
+        # for that patient_occupant
+
+        self.patient_graphs = self.instance.get_patients_occupants().vapply(
+            self.patient_view
+        )
+        # some cache:
+        self.__needs__p__s = self.instance.get_patients_occupants_needs().to_dictdict()
+
+        return
 
     def shortest_path(self, node1=None, node2=None, **kwargs):
         target, source = None, None
@@ -108,32 +132,139 @@ class GraphTool(object):
             self.g, source=source, target=target, dag=True, **kwargs
         )
 
+    def patient_view(self, patient_info):
+        vfilt = self.g.new_vp("bool", val=0)
+        efilt = self.g.new_ep("bool", val=1)
+
+        # THIS PART IS SPECIFIC TO THE INSTANCE (patient)
+        # we can potentially generate it once and store it in a dictionary per patient
+        shift_arr = self.shift_vp.get_array()
+        shift_pos_arr = self.pos_shift_vp.get_array()
+        av_start = self.instance.get_patient_occupants_available_starts()[
+            patient_info["id"]
+        ]
+        sink = self.get_sink_node()
+        source = self.get_source_node()
+        type_arr = self.type_vp.get_array()
+        room_arr = self.room_vp.get_array()
+        # we only allow start shifts in the range:
+        start_arr = shift_arr - shift_pos_arr
+        first_av_shift = av_start[0] * 3
+        last_av_shift = av_start[-1] * 3
+        starts_in_range = (start_arr >= first_av_shift) & (start_arr <= last_av_shift)
+        # if the type is nurse, we only allow those that start in the range
+        vfilt.a[starts_in_range | (type_arr != TYPE.NURSE)] = 1
+        # if not source or sink, we cannot have a shift before the available start
+        vfilt.a[(shift_arr < first_av_shift)] = 0
+        # if not nurse or dummy, we cannot have a shift after the last start
+        vfilt.a[(shift_arr > last_av_shift) & (type_arr != TYPE.NURSE)] = 0
+        # we make sure that source and sink are always available:
+        vfilt[source] = 1
+        vfilt[sink] = 1
+
+        if patient_info["is_occupant"]:
+            # we only permit their room
+            room_id = self.instance.get_occupants()[patient_info["id"]]["room_id"]
+            my_room = self._equiv_room[room_id]
+            vfilt.a[(room_arr != my_room) & (type_arr == TYPE.ROOM)] = 0
+        else:
+            # we take out the ban rooms for the patient
+            ban_rooms = (
+                self.instance.get_patient_room_ban()
+                .keys_tl()
+                .to_dict(1)
+                .get(patient_info["id"], [])
+            )
+
+            for r in ban_rooms:
+                my_room = self._equiv_room[r]
+                vfilt.a[room_arr == my_room] = 0
+
+        theater_occupant = find_vertex(
+            self.g, self.refs, get_theater_occupant(self.instance)
+        )
+        # if occupant, then theater can only be None (-1)
+        if patient_info["is_occupant"]:
+            # if the type is theater, then it must be value -1
+            vfilt.a[
+                (self.theater_vp.get_array() != -1)
+                & (self.type_vp.get_array() == TYPE.THEATER)
+            ] = 0
+        else:
+            # if patient, we take out the None (-1) option
+            vfilt[theater_occupant] = 0
+
+        edges_all = self.edges
+        targets = edges_all[:, 1]
+        sources = edges_all[:, 0]
+        # also, length_of_day determines the number of shifts
+        # a patient can only go to the sink from the last shift
+        last_shift = patient_info["length_of_stay"] * 3 - 1
+        last_horizon_shift = self.instance.get_last_shift_horizon()
+        incomplete_stay_before_end = (shift_pos_arr != last_shift) & (
+            shift_arr != last_horizon_shift
+        )
+        efilt.a[(targets == sink) & incomplete_stay_before_end[sources]] = 0
+
+        # if the patient is not mandatory, we keep the edge from source to sink:
+        if not patient_info.get("mandatory", True):
+            efilt[source, sink] = 1
+
+        # we delete nodes that go over the length of stay
+        vfilt.a[shift_pos_arr > last_shift] = 0
+
+        return gr.GraphView(self.g, vfilt=vfilt, efilt=efilt)
+
     def filter_feasibility(self, checks, patient_info):
-        # by default, we allow all nodes:
-        vfilt = self.g.new_vp("bool", val=1)
-        my_gender = patient_info["gender"]
+        # these are the properties we want to fill
+        my_graph = self.patient_graphs[patient_info["id"]]
+        vfilt = my_graph.new_vp("bool", val=1)
+        efilt = my_graph.new_ep("bool", val=1)
+
+        shift_arr = self.shift_vp.get_array()
+        type_arr = self.type_vp.get_array()
+        room_arr = self.room_vp.get_array()
+        theater_arr = self.theater_vp.get_array()
+
+        # THIS PART IS SPECIFIC TO CHECKS
+        # and basically does not apply for occupants
 
         # if there's another gender in a room-day, we take out
-        ban_room_days = checks["gender"].vfilter(lambda v: my_gender not in v).keys()
-        # if there's 0 capacity left in a room-day, we take out
-        ban_room_days |= checks["capacity_overuse"].vfilter(lambda v: v == 0).keys()
-
         # it may be possible that the patient is actually an occupant:
         ban_days = []
+        ban_theater_days = []
+        ban_room_days = set()
         if not patient_info["is_occupant"]:
+            my_gender = patient_info["gender"]
+            ban_room_days |= (
+                checks["gender"].vfilter(lambda v: my_gender not in v).keys()
+            )
+            # if there's 0 capacity left in a room-day, we take out
+            ban_room_days |= checks["capacity_overuse"].vfilter(lambda v: v == 0).keys()
+
             surgery_duration = patient_info["surgery_duration"]
             my_surgeon = patient_info["surgeon_id"]
             # if the surgeon has less capacity than duration in some day, we take out those days
             ban_days = (
                 checks["surgeon_overtime"]
                 .to_dictdict()
-                .get(my_surgeon, {})
-                .vfilter(lambda v: -surgery_duration < v)
+                .get(my_surgeon, SuperDict())
+                .vfilter(lambda v: surgery_duration > -v)
             )
-
-        room_arr = self.room_vp.get_array()
-        shift_arr = self.shift_vp.get_array()
-        type_arr = self.type_vp.get_array()
+            ban_theater_days = (
+                checks["ot_overtime"].vfilter(lambda v: surgery_duration > -v).keys()
+            )
+        # my_node = Node(self.instance, shift=39, pos_shift=-1, theater='t1', room='r3', nurse=None, type=TYPE.ROOM, hist_nurses=dict())
+        # vfilt.a[self.refs[my_node]]
+        for th, d in ban_theater_days:
+            my_shift = d * 3
+            my_theater = self._equiv_theater[th]
+            node_active = (
+                (my_shift == shift_arr)
+                & (type_arr == TYPE.THEATER)
+                & (theater_arr == my_theater)
+            )
+            vfilt.a[node_active] = 0
 
         for d in ban_days:
             my_shift = d * 3
@@ -141,16 +272,21 @@ class GraphTool(object):
             vfilt.a[node_active] = 0
 
         for r, d in ban_room_days:
+            # this ban is for the whole stay.
+            # if a patient cannot be in room r in day d
+            # it cannot start in that room for the previous length_of_stay days
             my_room = self._equiv_room[r]
-            my_shift = d * 3
+            start_shift = max(0, d - patient_info["length_of_stay"] + 1) * 3
+            end_shift = d * 3
             node_active = (
-                (my_shift == shift_arr)
+                (shift_arr >= start_shift)
+                & (shift_arr <= end_shift)
                 & (room_arr == my_room)
                 & (type_arr == TYPE.ROOM)
             )
             vfilt.a[node_active] = 0
 
-        return gr.GraphView(self.g, vfilt=vfilt)
+        return gr.GraphView(my_graph, vfilt=vfilt, efilt=efilt)
 
     def nodes_to_pattern(self, node1, node2, checks, mask, patient, **kwargs):
         if node1 is None:
@@ -163,7 +299,7 @@ class GraphTool(object):
         refs_inv = self.refs_inv
         graph = self.filter_feasibility(checks, patient_info)
 
-        weights = self.get_weights(node1, node2, checks, patient_info)
+        weights = self.get_weights(node1, node2, checks, patient_info, graph)
 
         source = find_vertex(graph, refs, node1)
         target = find_vertex(graph, refs, node2)
@@ -274,69 +410,116 @@ class GraphTool(object):
                 n_surgeon_transfer[relevant_node] = 0
         return n_surgeon_transfer
 
-    def get_overwork_scores(self, checks, patient_info):
-        current_workload = checks["workload_room"]
-        nurse_assignment = current_workload.keys_tl().to_dict(2, is_list=False)
-        room_workload = (
-            current_workload.to_tuplist().to_dict(3, indices=[0, 1]).vapply(sum)
+    def get_skill_level_scores(self, checks, patient_info):
+        skill_levels = self.instance.get_nurses().get_property("skill_level")
+
+        # get the skill level of the current nurse in that room
+        skill_level__r_s = (
+            checks["workload_room"]
+            .keys_tl()
+            .to_dict(2, is_list=False)
+            .vapply(lambda n: skill_levels[n])
         )
-        # nurse_eccessive_workload
-        # this is the remaining workload:
-        excess_workload = checks["nurse_eccessive_workload"]
-        excess_workload_current = excess_workload.vapply(lambda v: max(v, 0))
-        needs_by_pos = self.instance.get_patients_occupants_needs().to_dictdict()[
-            patient_info["id"]
+        min_required = min(skill_levels.values())
+
+        # get the level required by patients currently in each room, shift
+        # only those above the minimum level (who have no penalty by definition)
+        level_required = (
+            checks["shift_details"]
+            .values_tl()
+            .vfilter(lambda v: v["skill_level_required"] > min_required)
+            .to_dict("skill_level_required", indices=["room", "shift"])
+        )
+
+        # get the skill level of the node (proposed skill level)
+        proposed_skill_level = self.skill_level_vp.get_array()
+
+        # I first calculate the new patients penalties per node
+        diff_error = np.zeros_like(proposed_skill_level)
+        shift_sl_needs = (
+            self.__needs__p__s[patient_info["id"]]
+            .get_property("skill_level_required")
+            .vfilter(lambda v: v > 0)
+        )
+        new_patient_penalty = np.zeros_like(proposed_skill_level)
+        for pos, required in shift_sl_needs.items():
+            relevant_nodes = self.nodes__pos[pos]
+            my_zeros = np.zeros_like(relevant_nodes)
+            _diff = required - proposed_skill_level[relevant_nodes]
+            new_patient_penalty[relevant_nodes] = np.max([my_zeros, _diff], axis=0)
+        # And now I calculate the penalties of changing the nurse of a particular room
+        for (r, s), required_l in level_required.items():
+            # TODO: relevant nodes can be potentially filtered by the patient graph
+            # list nodes that cover that room and shift:
+            relevant_node = self.nodes__r_s[r, s]
+            my_zeros = np.zeros_like(relevant_node)
+            for required in required_l:
+                # penalty of the current assignment for that room and shift
+                penalty_1 = max(0, required - skill_level__r_s[r, s])
+                # penalty of the proposed assignment for all nodes
+                #  that have that room and shift
+                _dif = required - proposed_skill_level[relevant_node]
+                penalty_2 = np.max([my_zeros, _dif], axis=0)
+                # we calculate the increase in penalties (change in objective function term)
+                diff_error[relevant_node] += penalty_2 - penalty_1
+        return new_patient_penalty + diff_error
+
+    def get_overwork_scores(self, checks, patient_info, graph):
+        current_workload = checks["workload_room"]
+        # room, shift, nurse
+
+        # get the max workload of the node
+        max_load_arr = self.max_load_vp.get_array()
+        excess_load_n1 = np.zeros_like(max_load_arr)
+        excess_load_n2 = np.zeros_like(max_load_arr)
+        current_penalty_n2 = np.zeros_like(max_load_arr)
+        current_penalty_n1 = np.zeros_like(max_load_arr)
+        new_penalty_n1 = np.zeros_like(max_load_arr)
+        new_penalty_n2 = np.zeros_like(max_load_arr)
+        change_load = np.zeros_like(max_load_arr)
+        # get the current load on nurse and shift:
+
+        max_load = self.instance.get_nurse_shift().get_property("max_load")
+        excess_load = checks["nurse_eccessive_workload"]
+        workload = excess_load + max_load
+        for (nurse, shift), excess in excess_load.items():
+            excess_load_n2[self.nodes__n_s[nurse, shift]] = excess
+        for (room, shift, prev_nurse), load in current_workload.items():
+            # we add the load of the current nurse on the node:
+            my_rs_nodes = self.nodes__r_s[room, shift]
+            excess_load_n1[my_rs_nodes] = excess_load[prev_nurse, shift]
+            set_rs = set(self.nodes__r_s[room, shift])
+            set_pns = set(self.nodes__n_s[prev_nurse, shift])
+            # the load will change symmetrically
+            # in the cases where the node has a different
+            # nurse than the assigned
+            change_load[list(set_rs - set_pns)] = load
+
+        change_load_n2 = np.copy(change_load)
+        # we need to add the patient's load now
+        shift_wl_needs = (
+            self.__needs__p__s[patient_info["id"]]
+            .get_property("workload_produced")
+            .vfilter(lambda v: v > 0)
+        )
+        for pos, load in shift_wl_needs.items():
+            relevant_nodes = self.nodes__pos[pos]
+            change_load_n2[relevant_nodes] += load
+
+        # nurse1 decreases load
+        new_excess_load_n1 = excess_load_n1 - change_load
+        # nurse2 increases load
+        new_excess_load_n2 = excess_load_n2 + change_load_n2
+        current_penalty_n1[excess_load_n1 > 0] = excess_load_n1[excess_load_n1 > 0]
+        current_penalty_n2[excess_load_n2 > 0] = excess_load_n2[excess_load_n2 > 0]
+        new_penalty_n1[new_excess_load_n1 > 0] = new_excess_load_n1[
+            new_excess_load_n1 > 0
         ]
-        workload_by_pos = needs_by_pos.get_property("workload_produced")
+        new_penalty_n2[new_excess_load_n2 > 0] = new_excess_load_n2[
+            new_excess_load_n2 > 0
+        ]
 
-        def overwork_change_when_assigning_room(nurse, shift, room, pos_shift):
-            # returns the change in workload when assigning nurse to room
-            # it's possible there's no workload in that room
-            room_workload_for_nurse1 = room_workload.get((room, shift), 0)
-            room_workload_for_nurse2 = -room_workload_for_nurse1
-            # it's possible there's no nurse assigned to that room:
-            prev_nurse = nurse_assignment.get((room, shift))
-            if prev_nurse is None or prev_nurse == nurse:
-                # if the nurse is already assigned to the room, no extra workload
-                # if no nurse is assigned to that room, then the workload is 0
-                room_workload_for_nurse1 = 0
-                diff_overwork_nurse2 = 0
-            else:
-                # if the nurse is not assigned to the room, we need to calculate the workload of the previous nurse
-                diff_overwork_nurse2 = (
-                    max(
-                        excess_workload[prev_nurse, shift] + room_workload_for_nurse2, 0
-                    )
-                    - excess_workload_current[prev_nurse, shift]
-                )
-            diff_overwork_nurse1 = (
-                max(
-                    0,
-                    # initial workload
-                    excess_workload[nurse, shift]
-                    # workload of the new room
-                    + room_workload_for_nurse1
-                    # workload of the new patient
-                    + workload_by_pos[pos_shift],
-                )
-                - excess_workload_current[nurse, shift]
-            )
-
-            return diff_overwork_nurse1 + diff_overwork_nurse2
-
-        workload_vp = self.g.new_vp("int")
-        for v in self.g.vertices():
-            node = self.refs_inv[v]
-            if node.type != TYPE.NURSE:
-                continue
-            data = dict(
-                nurse=node.nurse,
-                shift=node.shift,
-                room=node.room,
-                pos_shift=node.pos_shift,
-            )
-            workload_vp[v] = overwork_change_when_assigning_room(**data)
-        return workload_vp.get_array()
+        return new_penalty_n1 + new_penalty_n2 - current_penalty_n1 - current_penalty_n2
 
     def get_continuity_care_scores(self):
         # we look for the last nodes before the sink
@@ -347,7 +530,7 @@ class GraphTool(object):
             n_continuity_care[node] = len(self.refs_inv[node].hist_nurses)
         return n_continuity_care.get_array()
 
-    def get_weights(self, node1, node2, checks, patient_info):
+    def get_weights(self, node1, node2, checks, patient_info, graph):
         nodes_window = self.get_nodes_in_window(node1, node2)
         edges_all = self.edges
         targets = edges_all[:, 1]
@@ -355,23 +538,20 @@ class GraphTool(object):
         relevant_edge = nodes_window[sources] & nodes_window[targets]
 
         weights = self.instance.get_weights()
-        edge_unassigned = self.get_unassigned_scores()
-        n_admission_delay = self.get_admission_delay_scores()
+        edge_unassigned = self.get_unassigned_scores(patient_info)
+        n_admission_delay = self.get_admission_delay_scores(patient_info)
         n_open_theater = self.get_opened_theater_scores(checks)
-        n_surgeon_transfer = self.get_surgeon_transfer_scores(checks)
-        n_age_diff = self.get_age_scores(checks)
-        n_workload = self.get_overwork_scores(checks)
-        n_continuity_care = self.get_continuity_care_scores()
-
-        # TODO:
-        #  skill level is more complicated, we need to check all patients in the target room
-        # minimum skill level
-        n_skill_level = self.skill_deficit.get_array()
+        n_surgeon_transfer = self.get_surgeon_transfer_scores(checks, patient_info)
+        n_age_diff = self.get_age_scores(checks, patient_info)
+        n_workload = self.get_overwork_scores(checks, patient_info, graph)
+        n_skill_level = self.get_skill_level_scores(checks, patient_info)
+        # TODO: here we need to calculate how changing a nurse affects the other patients
+        # n_continuity_care = self.get_continuity_care_scores()
 
         out_weights = self.g.new_ep("int")
         out_weights.a[relevant_edge] = (
             n_workload[targets][relevant_edge] * weights["nurse_eccessive_workload"]
-            + n_continuity_care[targets][relevant_edge] * weights["continuity_of_care"]
+            # + n_continuity_care[targets][relevant_edge] * weights["continuity_of_care"]
             + n_admission_delay[targets][relevant_edge] * weights["patient_delay"]
             + edge_unassigned[relevant_edge] * weights["unscheduled_optional"]
             + n_skill_level[targets][relevant_edge] * weights["room_nurse_skill"]
@@ -394,10 +574,12 @@ class GraphTool(object):
         node_label=None,
         tikz=False,
         filename=None,
+        g=None,
     ):
         instance = self.instance
         refs_inv = self.refs_inv
-        g = self.g
+        if g is None:
+            g = self.g
 
         def get_y_node(v):
             node = refs_inv[v]

@@ -72,8 +72,8 @@ class Node(object):
         else:
             self.hist_nurses = hist_nurses
         # we accumulate the nurses assigned to the patient
-        if type == TYPE.NURSE:
-            self.hist_nurses[nurse] = 1
+        # if type == TYPE.NURSE:
+        #     self.hist_nurses[nurse] = 1
         data = self.get_data()
         self.jsondump = json.dumps(data, option=json.OPT_SORT_KEYS)
         self.hash = hash(self.jsondump)
@@ -224,7 +224,9 @@ class Node(object):
         #  we can filter availability
         theaters = self.instance.get_operatingtheaters().keys_tl()
         # None should only available be for occupants:
-        theaters += [None]
+        # but occupants only have it on the first shift
+        if self.shift == 0:
+            theaters += [None]
         return [Node.from_node(self, theater=th, type=TYPE.THEATER) for th in theaters]
         # my_day = self.instance.get_day_from_shift(self.shift)
         # patient_info = self.get_patient_info()
@@ -277,7 +279,7 @@ class Node(object):
                 adjacent = adjacent + [sink_node]
         return adjacent
 
-    def walk_over_nodes(self, cache_neighbors=None, max_neighbors=5, max_nurses=10):
+    def walk_over_nodes(self, cache_neighbors=None, max_neighbors=None, max_nurses=10):
         """
 
         :param node: node from where we start the DFS
@@ -287,15 +289,16 @@ class Node(object):
         patients = self.instance.get_patients_occupants()
         optional = patients.vfilter(lambda v: not v.get("mandatory", True)).keys()
         starts = self.instance.get_patient_occupants_available_starts()
-        # only sample the optional
-        starts_sampled_in_shift = (
-            starts.kvapply(
+        sampled_starts = starts
+        if max_neighbors is not None:
+            sampled_starts = sampled_starts.kvapply(
                 lambda k, v: (
                     rn.sample(v, k=min(max_neighbors, len(v))) if k in optional else v
                 )
             )
-            .vapply(sorted)
-            .vapply(lambda v: [vv * 3 for vv in v])
+        # only sample the optional
+        starts_sampled_in_shift = sampled_starts.vapply(sorted).vapply(
+            lambda v: [vv * 3 for vv in v]
         )
         room_ban = self.instance.get_patient_room_ban()
         rooms = self.instance.get_rooms()
@@ -369,4 +372,17 @@ def get_sink_node(instance):
         nurse=None,
         type=TYPE.DUMMY,
         hist_nurses=None,
+    )
+
+
+def get_theater_occupant(instance):
+    return Node(
+        instance=instance,
+        shift=0,
+        pos_shift=-1,
+        theater=None,
+        room=None,
+        nurse=None,
+        type=TYPE.THEATER,
+        hist_nurses=dict(),
     )

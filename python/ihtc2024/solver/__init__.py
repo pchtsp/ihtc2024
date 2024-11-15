@@ -2,8 +2,9 @@ from typing import Union, Type
 from ..core import Experiment
 from .naive import NAIVE
 from .cp_sat import CpSAT
+from .graph import Graph
 
-solvers = dict(naive=NAIVE, cpsat=CpSAT)
+solvers = dict(naive=NAIVE, cpsat=CpSAT, graph=Graph)
 
 
 def get_solver(name: str = "milp_solver") -> Union[Type[Experiment], None]:
