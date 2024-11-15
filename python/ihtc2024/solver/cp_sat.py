@@ -1,7 +1,7 @@
 from .. import Solution
 from ..core.experiment import Experiment
 from ortools.sat.python import cp_model
-
+import random as rn
 import os
 import sys
 from contextlib import contextmanager
@@ -30,6 +30,15 @@ class CpSAT(Experiment):
         model = cp_model.CpModel()
         patients = self.instance.get_patients()
         possible_start = self.instance.get_patient_occupants_available_starts()
+        # we sample the possible starts.
+        max_sample = 10
+
+        def sample_days(day_range):
+            my_sample = rn.sample(day_range, k=min(max_sample, len(day_range)))
+            return sorted(my_sample)
+
+        possible_start = possible_start.vapply(sample_days)
+
         nurse_shifts = self.instance.get_nurse_shift()
         operation_theaters = self.instance.get_operatingtheaters().copy_deep()
         patients_occupants = self.instance.get_patients_occupants()
@@ -732,9 +741,9 @@ class CpSAT(Experiment):
 
         if path_of_log is not None:
             with open(path_of_log, "w") as f, stdout_redirected(f):
-                status = solver.Solve(model)
+                status = solver.Solve(model, solution_callback)
         else:
-            status = solver.Solve(model)
+            status = solver.Solve(model, solution_callback)
 
         status_conv = {
             cp_model.OPTIMAL: STATUS_OPTIMAL,

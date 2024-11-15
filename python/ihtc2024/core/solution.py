@@ -64,7 +64,7 @@ class Solution(SolutionCore):
         data = generic_from_dict(data, SOLUTION_TABLE_KEYS)
         return cls(data)
 
-    def to_ihtc_json(self, path: str) -> None:
+    def to_ihtc_dict(self) -> dict:
         content = generic_to_dict(self.data, SOLUTION_TABLE_KEYS)
         nurses = []
         _temp = content["nurse_assignment"].to_dict(None, indices="id")
@@ -76,7 +76,10 @@ class Solution(SolutionCore):
                 for (day, shift), v in row_indexed.items()
             ]
             nurses.append(elem)
-        result = dict(patients=content["patient_assignment"], nurses=nurses)
+        return dict(patients=content["patient_assignment"], nurses=nurses)
+
+    def to_ihtc_json(self, path: str) -> None:
+        result = self.to_ihtc_dict()
         with open(path, "w") as f:
             json.dump(result, f)
         return None

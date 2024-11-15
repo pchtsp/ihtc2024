@@ -9,8 +9,11 @@ import logging as log
 from typing import List
 from datetime import datetime
 import socket
-import pandas as pd
-from functools import reduce
+from cornflow_client.constants import (
+    SOLUTION_STATUS_FEASIBLE,
+    SOLUTION_STATUS_INFEASIBLE,
+    STATUS_UNDEFINED,
+)
 
 path_to_dir = "/home/pchtsp/Documents/projects/ihtc2024/results"
 
@@ -76,7 +79,9 @@ def solve_zip(
         try:
             result = algo.solve(options)
         except Exception as e:
-            result = dict(status=0, status_sol=0)
+            result = dict(
+                status=STATUS_UNDEFINED, status_sol=SOLUTION_STATUS_INFEASIBLE
+            )
             with open(os.path.join(experiment_dir, "error.txt"), "w") as f:
                 f.write(str(e))
 
@@ -90,7 +95,10 @@ def solve_zip(
         _log.update(options)
         tools.write_json(_log, os.path.join(experiment_dir, "options.json"))
         inst.to_json(os.path.join(experiment_dir, "input.json"))
-        if algo.solution is not None:
+        if (
+            algo.solution is not None
+            and result["status_sol"] == SOLUTION_STATUS_FEASIBLE
+        ):
             algo.solution.to_json(os.path.join(experiment_dir, "output.json"))
 
 
@@ -133,13 +141,25 @@ def get_table(path: str, is_zip_file=True):
     return result
 
 
-def my_benchmark():
+def my_benchmark(
+    solver_name="cpsat", timeLimit=60 * 20, scenarios=None, prefix="", my_range=None
+):
     path_to_dir = "/home/pchtsp/Documents/projects/ihtc2024/results"
     path_in = "/home/pchtsp/Documents/projects/ihtc2024/data/"
     # scenarios = ["ihtc2024_competition_instances"]
-    scenarios = ["ihtc2024_test_dataset"]
-    solver_name = "cpsat"
-    zipfile_name = path_to_dir + ".zip"
+    if scenarios is None:
+        scenarios = ["ihtc2024_test_dataset"]
+        prefix = "test"
+        if my_range is None:
+            my_range = range(1, 6)
+    elif scenarios == "competition":
+        scenarios = ["ihtc2024_competition_instances"]
+        prefix = "i"
+        if my_range is None:
+            my_range = range(1, 30)
+    else:
+        pass
+    # zipfile_name = path_to_dir + ".zip"
     # we create a run with a timestamp
     timestamp = datetime.now().strftime("%Y-%m-%dT%H%M")
     pc = socket.gethostname()
@@ -156,8 +176,8 @@ def my_benchmark():
         path_in=path_in,
         zip_flag=False,
         zip=False,
-        options=dict(timeLimit=60 * 20, msg=True, logPath="log.txt", threads=4),
-        instances=[f"i0{i}.json" for i in range(1, 10)],
+        options=dict(timeLimit=timeLimit, msg=True, logPath="log.txt", threads=4),
+        instances=[f"{prefix}{str(i).rjust(2, '0')}.json" for i in my_range],
     )
 
 
@@ -180,7 +200,9 @@ def rename_files():
 
 
 if __name__ == "__main__":
-    my_benchmark()
+    # my_benchmark(solver_name="cpsat", timeLimit=60 * 20)
+    # my_benchmark(solver_name="timefold_py", timeLimit=60 * 20, scenarios="competition")
+    my_benchmark(solver_name="cpsat", timeLimit=60 * 20, scenarios="competition")
     # key_names = dict(
     #     old="2024-10-10T1007-system76-pc",
     #     new="2024-10-10T1431-system76-pc",

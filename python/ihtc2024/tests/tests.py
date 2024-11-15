@@ -99,6 +99,16 @@ class TestInstance(unittest.TestCase):
         print(objective)
         my_experim.run_validator(PATH_TO_VALIDATOR)
 
+    def test_solve_toy_timefold(self):
+        my_experim = solvers["timefold_py"](self.instance)
+        my_experim.solve(dict(timeLimit=5, msg=True))
+        checks = my_experim.check_solution()
+
+        self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
+        objective = my_experim.get_objective()
+        print(objective)
+        my_experim.run_validator(PATH_TO_VALIDATOR)
+
     @staticmethod
     def get_solved_experiment(test_instance_name):
         path_to_data = os.path.join(tests_dir, "../../../data/")
@@ -129,13 +139,30 @@ class TestInstance(unittest.TestCase):
         print(my_experim_solved.get_objective())
         my_experim_solved.run_validator(PATH_TO_VALIDATOR)
         my_experim = solvers["cpsat"](my_experim_solved.instance)
-        my_experim.solve(dict(threads=8, timeLimit=30, msg=True))
+        my_experim.solve(dict(threads=8, timeLimit=60, msg=True))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         objective = my_experim.get_objective()
         print(objective)
         my_experim.get_objective_terms().vapply(lambda v: sum(v.values()))
         terms = my_experim.get_objective_terms()
+        my_experim.run_validator(PATH_TO_VALIDATOR)
+
+    def test_solve_test_instance_1_timefold(self):
+        my_experim_solved = self.get_solved_experiment("test01.json")
+        print(my_experim_solved.get_objective())
+        my_experim_solved.run_validator(PATH_TO_VALIDATOR)
+        my_experim = solvers["timefold_py"](
+            my_experim_solved.instance, my_experim_solved.solution
+        )
+        my_experim.solve(
+            dict(warmStart=True, timeLimit=60, msg=True, fixSolution=False)
+        )
+        checks = my_experim.check_solution()
+        print(checks)
+        # self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
+        objective = my_experim.get_objective()
+        print(objective)
         my_experim.run_validator(PATH_TO_VALIDATOR)
 
     def test_validator(self):

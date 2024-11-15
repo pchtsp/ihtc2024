@@ -11,7 +11,7 @@
     "adult",
     "elderly"
   ],
-  "occupants": [
+  "occupants":  [
     {
       "id": "a0",
       "gender": "B",

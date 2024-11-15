@@ -12,6 +12,8 @@ PyGObject
 webcolors
 network2tikz
 orjson
+timefold
+pydantic
 
 # quarto
 plotnine

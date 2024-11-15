@@ -157,7 +157,7 @@ class Instance(InstanceCore):
         data["parameters"] = SuperDict({p: content[p] for p in parameters})
         return cls.from_dict(data)
 
-    def to_ihtc_json(self, path: str) -> None:
+    def to_ihtc_dict(self) -> dict:
 
         patients = self.data["patients"].copy_deep()
         _rows = (
@@ -249,7 +249,10 @@ class Instance(InstanceCore):
         content["age_groups"] = (
             self.data["age_groups"].values_tl().take(["pos", "id"]).sorted().take(1)
         )
+        return content
 
+    def to_ihtc_json(self, path: str) -> None:
+        content = self.to_ihtc_dict()
         with open(path, "w") as f:
             json.dump(content, f)
         return None
@@ -416,4 +419,4 @@ class Instance(InstanceCore):
         occupants = self.get_occupants()
         occupants_rooms = occupants.get_property("room_id").vapply(lambda v: [v])
         available_rooms__p = SuperDict(**available_rooms__p, **occupants_rooms)
-        return available_rooms__p
+        return available_rooms__p.vapply(TupList)

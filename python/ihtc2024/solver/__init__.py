@@ -3,8 +3,9 @@ from ..core import Experiment
 from .naive import NAIVE
 from .cp_sat import CpSAT
 from .graph import Graph
+from .timefold import TimefoldPy
 
-solvers = dict(naive=NAIVE, cpsat=CpSAT, graph=Graph)
+solvers = dict(naive=NAIVE, cpsat=CpSAT, graph=Graph, timefold_py=TimefoldPy)
 
 
 def get_solver(name: str = "milp_solver") -> Union[Type[Experiment], None]:
