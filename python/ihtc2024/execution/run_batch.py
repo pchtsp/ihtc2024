@@ -91,10 +91,9 @@ def solve_zip(
         _log.update(options)
         tools.write_json(_log, os.path.join(experiment_dir, "options.json"))
         inst.to_json(os.path.join(experiment_dir, "input.json"))
-        if (
-            algo.solution is not None
-            and result["status_sol"] == SOLUTION_STATUS_FEASIBLE
-        ):
+        # we write the solution if it exists
+        # even if it's not feasible
+        if algo.solution is not None:
             algo.solution.to_json(os.path.join(experiment_dir, "output.json"))
 
 

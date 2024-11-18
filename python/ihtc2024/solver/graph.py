@@ -49,15 +49,15 @@ class Graph(Experiment):
         nodes_ady = source.walk_over_nodes(nodes_ady, max_neighbors=None, max_nurses=7)
         log.info(f"end creating nodes: {len(nodes_ady)} nodes")
         my_graph = GraphTool(instance=self.instance, nodes_ady=nodes_ady)
-        all_graphs = {}
-        for patient_info in patients_occupants_s:
-            my_id = patient_info["id"]
-            all_graphs[my_id] = GraphTool(
-                my_graph.instance,
-                nodes_ady=None,
-                gt=my_graph,
-                patient_info=patient_info,
-            )
+        # all_graphs = {}
+        # for patient_info in patients_occupants_s:
+        #     my_id = patient_info["id"]
+        #     all_graphs[my_id] = GraphTool(
+        #         my_graph.instance,
+        #         nodes_ady=None,
+        #         gt=my_graph,
+        #         patient_info=patient_info,
+        #     )
 
         log.info(f"Graph created: {my_graph.g.num_edges()} edges")
         best_obj = np.Inf
@@ -74,12 +74,11 @@ class Graph(Experiment):
                 errors = {
                     **errors,
                     **self.calculate_coupling_checks(),
-                    "workload_room": self.get_workload_room(),
-                    "shift_details": self.get_patient_shift_details(),
+                    # "workload_room": self.get_workload_room(),
                 }
 
-                pattern = all_graphs[patient_id].nodes_to_pattern(
-                    None, None, errors, None, patient_id
+                pattern = my_graph.nodes_to_pattern(
+                    None, None, errors, None, patient_id, self
                 )
                 success = self.apply_pattern(pattern, patient_info)
                 if not success:
@@ -96,12 +95,9 @@ class Graph(Experiment):
                     best_obj = objective
                     best_sol = self.solution.copy()
                 log.debug(f"current={objective}; errors={sum_errors}; best={best_obj}")
-        if best_sol is None:
-            empty_solution = SuperDict(
-                patient_assignment=TupList(), nurse_assignment=TupList()
-            )
-            self.solution = Solution.from_dict(empty_solution)
-        else:
+        # if we have a best solution, we store it.
+        # if now, we keep the "current solution".
+        if best_sol is not None:
             self.solution = best_sol
         errors = self.check_solution()
         sum_errors = get_sum_errors(errors)
