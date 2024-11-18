@@ -484,7 +484,6 @@ class GraphTool(object):
         change_load = np.zeros_like(max_load_arr)
         # get the current load on nurse and shift:
 
-        max_load = self.instance.get_nurse_shift().get_property("max_load")
         excess_load = checks["nurse_eccessive_workload"]
         for (nurse, shift), excess in excess_load.items():
             excess_load_n2[self.nodes__n_s[nurse, shift]] = excess
