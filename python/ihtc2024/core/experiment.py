@@ -201,14 +201,6 @@ class Experiment(ExperimentCore):
             h7=capacity_overuse,
         )
 
-    def get_workload_room(self):
-        return (
-            self.get_patient_shift_details()
-            .values_tl()
-            .to_dict("workload_produced", indices=["room", "shift", "nurse"])
-            .vapply(sum)
-        )
-
     def get_objective_terms_raw(self):
         # we leave the coupling constraints as raw as possible
         patients = self.instance.get_patients_occupants()
@@ -295,6 +287,8 @@ class Experiment(ExperimentCore):
             surgeon_transfer=ots__s_d,
             patient_delay=admission_delay,
             unscheduled_optional=unscheduled_patients,
+            # this one we pass to have a cache
+            shift_details=patient_solution_details,
         )
 
     def get_objective_terms(self):
