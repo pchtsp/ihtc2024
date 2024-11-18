@@ -34,10 +34,6 @@ def solve_zip(
     if options is None:
         options = {}
     backup_options = dict(options)
-    if options.get("DEBUG", False):
-        log.basicConfig(level=log.DEBUG)
-    else:
-        log.basicConfig(level=log.INFO)
     # we recreate the whole batch output file
     # if os.path.exists(batch_out_path):
     #     shutil.rmtree(batch_out_path)
@@ -142,7 +138,11 @@ def get_table(path: str, is_zip_file=True):
 
 
 def my_benchmark(
-    solver_name="cpsat", timeLimit=60 * 20, scenarios=None, prefix="", my_range=None
+    solver_name="cpsat",
+    timeLimit=60 * 20,
+    scenarios=None,
+    my_range=None,
+    instances=None,
 ):
     path_to_dir = "/home/pchtsp/Documents/projects/ihtc2024/results"
     path_in = "/home/pchtsp/Documents/projects/ihtc2024/data/"
@@ -152,11 +152,13 @@ def my_benchmark(
         prefix = "test"
         if my_range is None:
             my_range = range(1, 6)
+        instances = [f"{prefix}{str(i).rjust(2, '0')}.json" for i in my_range]
     elif scenarios == "competition":
         scenarios = ["ihtc2024_competition_instances"]
         prefix = "i"
         if my_range is None:
             my_range = range(1, 30)
+        instances = [f"{prefix}{str(i).rjust(2, '0')}.json" for i in my_range]
     else:
         pass
     # zipfile_name = path_to_dir + ".zip"
@@ -177,7 +179,7 @@ def my_benchmark(
         zip_flag=False,
         zip=False,
         options=dict(timeLimit=timeLimit, msg=True, logPath="log.txt", threads=4),
-        instances=[f"{prefix}{str(i).rjust(2, '0')}.json" for i in my_range],
+        instances=instances,
     )
 
 
@@ -202,18 +204,12 @@ def rename_files():
 if __name__ == "__main__":
     # my_benchmark(solver_name="cpsat", timeLimit=60 * 20)
     # my_benchmark(solver_name="timefold_py", timeLimit=60 * 20, scenarios="competition")
-    my_benchmark(solver_name="cpsat", timeLimit=60 * 20, scenarios="competition")
-    # key_names = dict(
-    #     old="2024-10-10T1007-system76-pc",
-    #     new="2024-10-10T1431-system76-pc",
-    #     ref="reference",
-    # )
-    # table_dict = {k: my_table(v) for k, v in key_names.items()}
-    # for k, v in table_dict.items():
-    #     v[k] = v["objective"]
-    #     table_dict[k] = v[["name", k]]
-    #
-    # df_merged = reduce(
-    #     lambda left, right: pd.merge(left, right, on=["name"], how="left"),
-    #     table_dict.values(),
-    # )
+    # my_benchmark(solver_name="cpsat", timeLimit=60 * 20, scenarios="competition")
+    # my_benchmark(solver_name="graph", timeLimit=60 * 20, scenarios="competition")
+    my_benchmark(
+        solver_name="graph",
+        timeLimit=60 * 20,
+        # scenarios=["ihtc2024_test_dataset"],
+        scenarios=["ihtc2024_competition_instances"],
+        # scenarios=["ihtc2024_test_dataset", "ihtc2024_competition_instances"],
+    )

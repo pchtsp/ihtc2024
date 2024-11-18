@@ -1,7 +1,6 @@
 from pytups import SuperDict, TupList
 import pandas as pd
-import copy
-from typing import List, Dict
+import logging as log
 import os
 from .instance import Instance
 from .solution import Solution
@@ -478,3 +477,40 @@ class Experiment(ExperimentCore):
                 id=nurse, room=room, shift=shift_type, day=day
             )
         return 1
+
+    @staticmethod
+    def set_log_config(options):
+        """
+        Sets logging according to options
+        :param options: options dictionary
+        :return: None
+        """
+        level = log.INFO
+        if options.get("msg", False):
+            level = log.DEBUG
+        logFile = options.get("logPath")
+        open(logFile, "w").close()
+        logFormat = "%(asctime)s %(levelname)s:%(message)s"
+        formatter = log.Formatter(logFormat)
+
+        # to file:
+        file_log_handler = log.FileHandler(logFile, "a")
+        file_log_handler.setFormatter(formatter)
+
+        # to command line
+        stderr_log_handler = log.StreamHandler()
+        stderr_log_handler.setFormatter(formatter)
+
+        outputs = {"file": file_log_handler, "console": stderr_log_handler}
+        output_choices = options.get("logOutput", ["file"])
+
+        _log = log.getLogger()
+        _log.handlers = [v for k, v in outputs.items() if k in output_choices]
+
+        # option to add a custom handler:
+        custom_handler = options.get("log_handler")
+        if custom_handler:
+            custom_handler.setFormatter(formatter)
+            _log.handlers.append(custom_handler)
+
+        _log.setLevel(level)

@@ -62,7 +62,13 @@ class Batch(object):
         if self.no_scenario:
             return sd.SuperDict.from_dict(scenario_paths)
         scenario_instances = {
-            s: os.listdir(v) for s, v in scenario_paths.items() if os.path.isdir(v)
+            s: [
+                a
+                for a in os.listdir(v)
+                if os.path.exists(os.path.join(v, a, "input.json"))
+            ]
+            for s, v in scenario_paths.items()
+            if os.path.isdir(v)
         }
         scenario_paths_in, instances_paths_in = self.re_make_paths(scenario_instances)
         return sd.SuperDict.from_dict(instances_paths_in).to_dictup()

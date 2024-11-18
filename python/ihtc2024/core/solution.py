@@ -18,6 +18,9 @@ class Solution(SolutionCore):
         super().__init__(data)
         return
 
+    def copy(self):
+        return self.from_dict(self.to_dict())
+
     @property
     def data(self) -> SuperDict:
         return self._data
