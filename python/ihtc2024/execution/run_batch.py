@@ -142,6 +142,7 @@ def my_benchmark(
     scenarios=None,
     my_range=None,
     instances=None,
+    **options,
 ):
     path_to_dir = "/home/pchtsp/Documents/projects/ihtc2024/results"
     path_in = "/home/pchtsp/Documents/projects/ihtc2024/data/"
@@ -177,7 +178,7 @@ def my_benchmark(
         path_in=path_in,
         zip_flag=False,
         zip=False,
-        options=dict(timeLimit=timeLimit, msg=True, logPath="log.txt", threads=4),
+        options=dict(timeLimit=timeLimit, msg=True, logPath="log.txt", **options),
         instances=instances,
     )
 
@@ -211,4 +212,9 @@ if __name__ == "__main__":
         # scenarios=["ihtc2024_test_dataset"],
         scenarios=["ihtc2024_competition_instances"],
         # scenarios=["ihtc2024_test_dataset", "ihtc2024_competition_instances"],
+        # instances=[f"i{str(i).rjust(2, '0')}.json" for i in range(17, 31)],
+        # instances=["i17.json"],
+        seed=351956,
+        maxSample=[7, 10, None],
+        threads=8,
     )

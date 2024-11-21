@@ -1,8 +1,7 @@
 import numpy as np
 
-from .. import Solution
 from ..core.experiment import Experiment
-from ihtc2024.graph.node import get_source_node
+from ihtc2024.graph import get_nodes_ady_par
 from ihtc2024.graph.graph import GraphTool
 import time
 
@@ -14,11 +13,6 @@ from cornflow_client.constants import (
     SOLUTION_STATUS_INFEASIBLE,
     STATUS_FEASIBLE,
 )
-
-
-def print_time(time_init, msg: str):
-    print(f"t={round(time.time() - time_init)}", msg)
-    return
 
 
 def get_sum_errors(errors):
@@ -43,11 +37,12 @@ class Graph(Experiment):
                 get_start_margin(v),
             )
         )
-        nodes_ady = SuperDict()
-        source = get_source_node(self.instance)
         log.info(f"start creating nodes")
-        nodes_ady = source.walk_over_nodes(nodes_ady, max_neighbors=None, max_nurses=7)
+        nodes_ady = get_nodes_ady_par(
+            self.instance, num_workers=options.get("threads", 4)
+        )
         log.info(f"end creating nodes: {len(nodes_ady)} nodes")
+        log.info(f"Creating Graph")
         my_graph = GraphTool(instance=self.instance, nodes_ady=nodes_ady)
         # all_graphs = {}
         # for patient_info in patients_occupants_s:
@@ -58,7 +53,6 @@ class Graph(Experiment):
         #         gt=my_graph,
         #         patient_info=patient_info,
         #     )
-
         log.info(f"Graph created: {my_graph.g.num_edges()} edges")
         best_obj = np.Inf
         best_sol = None

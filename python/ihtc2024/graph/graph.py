@@ -10,6 +10,7 @@ import logging as log
 
 from typing import Dict
 import numpy as np
+import ihtc2024.graph.node as nd
 
 
 class GraphTool(object):
@@ -110,10 +111,11 @@ class GraphTool(object):
         # for each patient_occupant, we create a view of the graph
         # that filters the nodes and edges that are not feasible
         # for that patient_occupant
-
+        log.info("Start creating patient views")
         self.patient_graphs = self.instance.get_patients_occupants().vapply(
             self.patient_view
         )
+        log.info("Finish creating patient views")
         # some cache:
         self.__needs__p__s = self.instance.get_patients_occupants_needs().to_dictdict()
 
@@ -709,17 +711,6 @@ def find_vertex(graph, refs, node):
 # . update weights
 # . get the shortest path/ pattern for patient
 # . apply path if improvement
-
-
-def patient_to_graph(instance, max_neighbors, max_nurses):
-    print(f"Graph started")
-    nodes_ady = SuperDict()
-    source = get_source_node(instance)
-    nodes_ady = source.walk_over_nodes(
-        nodes_ady, max_neighbors=max_neighbors, max_nurses=max_nurses
-    )
-    graph = GraphTool(instance=instance, nodes_ady=nodes_ady)
-    return graph
 
 
 if __name__ == "__main__":

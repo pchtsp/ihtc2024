@@ -10,6 +10,7 @@ from zipfile import ZipFile
 import pytups as pt
 
 from typing import Union
+import time
 
 
 def generic_from_dict(data, table_keys):
@@ -125,3 +126,8 @@ def dirs_in_zip(zf: ZipFile) -> set:
     for fn in zf.namelist():
         alldirs.update(parent_dirs(fn))
     return alldirs
+
+
+def print_time(time_init, msg: str):
+    print(f"t={round(time.time() - time_init)}", msg)
+    return

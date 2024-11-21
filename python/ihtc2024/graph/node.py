@@ -1,11 +1,9 @@
 from ..core.instance import Instance
-
-import pytups.superdict as sd
-from pytups import TupList
-import random as rn
+from pytups import TupList, SuperDict
 import orjson as json
 from typing import Dict
-import numpy as np
+import os
+import multiprocessing as multi
 
 
 class TYPE(object):
@@ -14,14 +12,6 @@ class TYPE(object):
     ROOM = 2
     NURSE = 3
     DUMMY = -1
-
-
-nextType = {
-    TYPE.DUMMY: TYPE.DAY,
-    TYPE.DAY: TYPE.THEATER,
-    TYPE.THEATER: TYPE.ROOM,
-    TYPE.NURSE: TYPE.NURSE,
-}
 
 
 class Node(object):
@@ -33,7 +23,6 @@ class Node(object):
     room
     nurse
     type
-    previous nurses: dict(nurse: 1)
     """
 
     type: int
@@ -151,10 +140,19 @@ class Node(object):
             "hist_nurses": self.hist_nurses,
         }
 
+    def copy(self):
+        return Node.from_node(
+            self,
+            hist_nurses=dict(self.hist_nurses),
+            instance=self.instance.copy(),
+            keep_cache=False,
+        )
+
     @classmethod
-    def from_node(cls, node: "Node", **kwargs):
+    def from_node(cls, node: "Node", keep_cache=True, **kwargs):
         """
         :param Node node: another node to copy from
+        :param keep_cache: if we want to keep the cache of the node
         :param kwargs: replacement properties for new node
         :return:
         """
@@ -165,14 +163,15 @@ class Node(object):
             room=kwargs.get("room", node.room),
             nurse=kwargs.get("nurse", node.nurse),
             type=kwargs.get("type", node.type),
-            hist_nurses=node.hist_nurses,
-            instance=node.instance,
+            hist_nurses=kwargs.get("hist_nurses", node.hist_nurses),
+            instance=kwargs.get("instance", node.instance),
         )
-        # we initialize the cache parameters:
-        new_node.__nurses__s = node.__nurses__s
-        new_node.__patients_occupants = node.__patients_occupants
-        new_node.__lengths_of_stay = node.__lengths_of_stay
-        new_node.__last_shift = node.__last_shift
+        if keep_cache:
+            # we initialize the cache parameters:
+            new_node.__nurses__s = node.__nurses__s
+            new_node.__patients_occupants = node.__patients_occupants
+            new_node.__lengths_of_stay = node.__lengths_of_stay
+            new_node.__last_shift = node.__last_shift
 
         return new_node
 
@@ -208,15 +207,9 @@ class Node(object):
         # ]
 
     def get_adjacency_days(self):
-        # since we're in a generic graph, all days are available in theory:
-        get_first = self.instance.get_first_shift_of_day
-        possible_starts = self.instance.get_horizon_days()
-        shifts = [get_first(d) for d in possible_starts]
-        return [Node.from_node(self, shift=d, type=TYPE.DAY) for d in shifts]
-        # possible_starts = self.instance.get_patient_occupants_available_starts()
-
-        # shifts = [get_first(d) for d in possible_starts[self.patient]]
-        # return [Node.from_node(self, shift=d, type=TYPE.DAY) for d in shifts]
+        starts = self.instance.get_patient_occupants_available_starts()
+        starts_in_shift = set(d * 3 for p, days in starts.items() for d in days)
+        return [Node.from_node(self, shift=s, type=TYPE.DAY) for s in starts_in_shift]
 
     def get_adjacency_theaters(self):
         # TODO: maybe not all theaters are available all days
@@ -267,9 +260,6 @@ class Node(object):
         else:
             # type=room or type=nurse
             adjacent = self.get_adjacent_shift(max_nurses)
-        # if len(adjacent) > max_neighbors:
-        #     adjacent = rn.sample(adjacent, max_neighbors)
-        # after sampling, we consider adding the optional arc
         pos_shift_may_be_last = (
             self.pos_shift in all_last_pos_shift and self.type == TYPE.NURSE
         )
@@ -285,28 +275,16 @@ class Node(object):
         :param node: node from where we start the DFS
         :return: all arcs
         """
-        # calculate [starts, room]: max length triplets.
         patients = self.instance.get_patients_occupants()
-        optional = patients.vfilter(lambda v: not v.get("mandatory", True)).keys()
         starts = self.instance.get_patient_occupants_available_starts()
-        sampled_starts = starts
-        if max_neighbors is not None:
-            sampled_starts = sampled_starts.kvapply(
-                lambda k, v: (
-                    rn.sample(v, k=min(max_neighbors, len(v))) if k in optional else v
-                )
-            )
-        # only sample the optional
-        starts_sampled_in_shift = sampled_starts.vapply(sorted).vapply(
-            lambda v: [vv * 3 for vv in v]
-        )
+        starts_in_shift = starts.vapply(sorted).vapply(lambda v: [vv * 3 for vv in v])
         room_ban = self.instance.get_patient_room_ban()
         rooms = self.instance.get_rooms()
         # we translate the lengths into shifts...
         lengths = patients.get_property("length_of_stay").vapply(lambda v: v * 3 - 1)
         my_domain = [
             (t, r, lengths[p])
-            for p, _range in starts_sampled_in_shift.items()
+            for p, _range in starts_in_shift.items()
             for t in _range
             for r in rooms
             if (p, r) not in room_ban
@@ -316,7 +294,7 @@ class Node(object):
         remaining_nodes = [self]
         # we store the neighbors of visited nodes, not to recalculate them
         if not cache_neighbors:
-            cache_neighbors = sd.SuperDict()
+            cache_neighbors = SuperDict()
         # given that cache_neighbors could already exist,
         #  we generate our own list of actual visited nodes
         i = 0
@@ -324,8 +302,9 @@ class Node(object):
 
         while len(remaining_nodes) and i < 12e6:
             if i % 10000 == 0:
+                # if i % 10 == 0:
                 print(
-                    f"Iteration {i}, remaining: {len(remaining_nodes)}, visited: {len(cache_neighbors)}"
+                    f"Process {os.getpid()}, Iteration {i}, remaining: {len(remaining_nodes)}, visited: {len(cache_neighbors)}"
                 )
             i += 1
             node = remaining_nodes.pop()
@@ -344,6 +323,7 @@ class Node(object):
                 # since the node is new, we want to visit its neighbors
                 remaining_nodes += neighbors
             # log.debug("iteration: {}, remaining: {}, stored: {}".format(i, len(remaining_nodes), len(cache_neighbors)))
+        print(f"Process {os.getpid()}: finished")
         return cache_neighbors
 
 
@@ -386,3 +366,21 @@ def get_theater_occupant(instance):
         type=TYPE.THEATER,
         hist_nurses=dict(),
     )
+
+
+def get_nodes_ady(instance, **kwargs):
+    source = get_source_node(instance)
+    return source.walk_over_nodes(**kwargs)
+
+
+def get_nodes_ady_par(instance, num_workers=4, **kwargs):
+    # TODO: watch out with importing timefold and python-java code
+    source = get_source_node(instance)
+    day_nodes = source.get_adjacency_days()
+    nodes_ady = SuperDict()
+    with multi.Pool(processes=num_workers) as pool:
+        results = pool.map(Node.walk_over_nodes, day_nodes)
+    for a in results:
+        nodes_ady.update(a)
+    nodes_ady[source] = day_nodes + [get_sink_node(instance)]
+    return nodes_ady

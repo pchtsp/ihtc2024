@@ -2,10 +2,9 @@ import unittest
 import json
 import random
 import numpy as np
-import multiprocessing as multi
 
 from ihtc2024 import Instance, Solution, Experiment, solvers
-from ihtc2024.graph import patient_to_graph
+import ihtc2024.graph as gr
 from pytups import SuperDict
 import time
 import os, sys
@@ -224,7 +223,6 @@ class TestInstance(unittest.TestCase):
         experiment.run_validator(PATH_TO_VALIDATOR)
 
     def test_group_nurses(self):
-        self.instance
         nurse_shifts = self.instance.get_nurse_shift()
         nurse__shift = (
             nurse_shifts.keys_tl()
@@ -236,6 +234,16 @@ class TestInstance(unittest.TestCase):
             for pos, n1 in enumerate(nurses):
                 for n2 in nurses[pos + 1 :]:
                     share_shift[n1, n2] = share_shift.get((n1, n2), 0) + 1
+
+    def test_build_graph(self):
+        my_experim = self.get_solved_experiment("test01.json")
+        one = gr.get_nodes_ady(my_experim.instance)
+        two = gr.get_nodes_ady_par(my_experim.instance, num_workers=4)
+        self.assertDictEqual(one, two)
+
+    def test_build_graph_par(self):
+        my_experim = self.get_test_experiment("i21.json")
+        one = gr.get_nodes_ady_par(my_experim.instance, num_workers=8)
 
     def test_create_patient_graph(self):
 
