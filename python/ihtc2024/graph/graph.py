@@ -11,21 +11,29 @@ import logging as log
 from typing import Dict
 import numpy as np
 import ihtc2024.graph.node as nd
+import os
 
 
 class GraphTool(object):
     refs: Dict[Node, int]
     refs_inv: Dict[int, Node]
     g: gr.Graph
+    patient_graphs: Dict[str, gr.GraphView]
 
-    def __init__(self, instance, nodes_ady: Dict[Node, Node]):
+    def __init__(
+        self, instance, nodes_ady: Dict[Node, list[Node]], patient_graphs=True
+    ):
+        print(f"Process {os.getpid()}, graph starts")
         self.instance = instance
         self.sink = get_sink_node(instance)
         self.g = gr.Graph(directed=True)
         edges = [(key, value) for key, values in nodes_ady.items() for value in values]
         edges_arr = np.array(edges)
-        nodes = list(set(np.concatenate((edges_arr[:, 0], edges_arr[:, 1]))))
+        nodes = list(nodes_ady.keys())
+        nodes.append(self.sink)
         vertices = self.g.add_vertex(len(nodes))
+        # nodes = list(set(np.concatenate((edges_arr[:, 0], edges_arr[:, 1]))))
+        # vertices = self.g.add_vertex(len(nodes))
         self.refs = SuperDict({node: int(v) for node, v in zip(nodes, vertices)})
         self.refs_inv = self.refs.reverse()
 
@@ -38,13 +46,10 @@ class GraphTool(object):
         distances = self.shortest_path(node1=self.sink)
         max_dist = instance.get_horizon_size_shifts() + 5
 
-        remove = self.g.new_vp("bool", val=True)
-        remove.a[distances.get_array() > max_dist] = False
-        # nodes_to_remove = [v for v in self.g.vertices() if remove[v]]
-        # nodes_to_remove = [n for n in self.g.vertices() if distances[n] > max_dist]
+        keep = self.g.new_vp("bool", val=True)
+        keep.a[distances.get_array() > max_dist] = False
         self.g.set_reversed(is_reversed=False)
-        self.g = gr.GraphView(self.g, vfilt=remove)
-        # self.g.remove_vertex(nodes_to_remove, fast=True)
+        self.g = gr.GraphView(self.g, vfilt=keep)
         self.g.shrink_to_fit()
         self.g.reindex_edges()
 
@@ -111,14 +116,15 @@ class GraphTool(object):
         # for each patient_occupant, we create a view of the graph
         # that filters the nodes and edges that are not feasible
         # for that patient_occupant
-        log.info("Start creating patient views")
-        self.patient_graphs = self.instance.get_patients_occupants().vapply(
-            self.patient_view
-        )
-        log.info("Finish creating patient views")
+        if patient_graphs:
+            log.info("Start creating patient views")
+            self.patient_graphs = self.instance.get_patients_occupants().vapply(
+                self.patient_view
+            )
+            log.info("Finish creating patient views")
         # some cache:
         self.__needs__p__s = self.instance.get_patients_occupants_needs().to_dictdict()
-
+        print(f"Process {os.getpid()}, graph ends")
         return
 
     def shortest_path(self, node1=None, node2=None, **kwargs):
@@ -168,7 +174,10 @@ class GraphTool(object):
             # we only permit their room
             room_id = self.instance.get_occupants()[patient_info["id"]]["room_id"]
             my_room = self._equiv_room[room_id]
-            vfilt.a[(room_arr != my_room) & (type_arr == TYPE.ROOM)] = 0
+            vfilt.a[
+                (room_arr != my_room)
+                & ((type_arr == TYPE.ROOM) | (type_arr == TYPE.NURSE))
+            ] = 0
         else:
             # we take out the ban rooms for the patient
             ban_rooms = (

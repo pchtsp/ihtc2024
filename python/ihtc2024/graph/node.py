@@ -14,6 +14,9 @@ class TYPE(object):
     DUMMY = -1
 
 
+ALL_TYPES = [TYPE.THEATER, TYPE.DAY, TYPE.ROOM, TYPE.NURSE, TYPE.DUMMY]
+
+
 class Node(object):
     """
     corresponds to an assignment to a patient in a shift.
@@ -82,9 +85,9 @@ class Node(object):
                 f"nu:{self.shift}/{self.pos_shift}->{self.nurse}@{self.room}{nurses}"
             )
         elif self.type == TYPE.THEATER:
-            assignment = f"th:{self.theater}"
+            assignment = f"th:{self.theater}:{self.shift}"
         elif self.type == TYPE.ROOM:
-            assignment = f"room:{self.room}"
+            assignment = f"room:{self.room}:{self.shift}"
         elif self.type == TYPE.DUMMY:
             if self.shift == -1:
                 assignment = "source"
@@ -384,3 +387,187 @@ def get_nodes_ady_par(instance, num_workers=4, **kwargs):
         nodes_ady.update(a)
     nodes_ady[source] = day_nodes + [get_sink_node(instance)]
     return nodes_ady
+
+
+def nodes_per_patient(
+    nodes_ady: SuperDict[Node, list[Node]], instance: Instance
+) -> SuperDict:
+    # TODO: test this
+    nodes = nodes_ady.keys()
+    nodes_ady = nodes_ady.vapply(set)
+    day_range = instance.get_patient_occupants_available_starts()
+    patients = instance.get_patients_occupants()
+    length_p = patients.get_property("length_of_stay")
+    _by_start = SuperDict({r * 3: set() for d in day_range.values() for r in d})
+    # this only applies to source:
+    _by_start[-1] = set()
+    _by_room = SuperDict({r: set() for r in instance.get_rooms()})
+    _by_room[None] = set()
+    _by_type = SuperDict({r: set() for r in ALL_TYPES})
+    _by_shift = SuperDict(
+        {r: set() for r in range(instance.get_last_shift_horizon() + 1)}
+    )
+    # positions at or before a certain length of stay
+    all_positions = range(max(length_p.values()) * 3)
+    _by_pos = SuperDict({r: set() for r in all_positions})
+    # we want to count the shifts before the nurse
+    _by_pos[-1] = set()
+    for v in nodes:
+        if v.pos_shift >= 0:
+            _by_start[v.shift - v.pos_shift].add(v)
+        else:
+            # nodes without pos_shift still have start_shift=shift
+            _by_start[v.shift].add(v)
+        # we want to store those with pos_shift == -1
+        _by_pos[v.pos_shift].add(v)
+        _by_room[v.room].add(v)
+        _by_type[v.type].add(v)
+        if v.shift > 0:
+            _by_shift[v.shift].add(v)
+
+    _by_length = SuperDict({r: set() for r in length_p.values()})
+    days = sorted(_by_length.keys())
+    day_pos = 0
+    len_days = len(days)
+    for pos in all_positions:
+        if pos / 3 >= days[day_pos]:
+            day_pos += 1
+        for dd_pos in range(day_pos, len_days):
+            _by_length[days[dd_pos]] |= _by_pos[pos]
+
+    for k, v in _by_length.items():
+        v |= _by_pos[-1]
+
+    # here we've done all the preprocessing.
+    # we can now, iterate (or parallelize) by patient
+    prep_data = {
+        "_by_start": _by_start,
+        "_by_room": _by_room,
+        "_by_type": _by_type,
+        "_by_length": _by_length,
+        "_by_pos": _by_pos,
+        "day_range": day_range,
+        "length_p": length_p,
+    }
+    my_nodes_ady = SuperDict()
+    results = {}
+    with multi.Manager() as manager:
+        # Create a shared object
+        shared_object = manager.dict(nodes_ady)
+        shared_object1 = manager.dict(prep_data)
+
+        # Create a pool of worker processes
+        with multi.Pool(processes=4) as pool:
+            # Pass the shared object to the worker processes
+            # pool.map(worker, [shared_object] * 4)
+            for p, patient_info in patients.items():
+                results[p] = pool.apply_async(
+                    get_nodes_ady_per_patient,
+                    [instance, shared_object, patient_info, shared_object1],
+                )
+            for p, a in results.items():
+                my_nodes_ady[p] = a.get()
+    # for p, patient_info in patients.items():
+    #     my_nodes_ady[p] = get_nodes_ady_per_patient(
+    #         instance, nodes_ady, patient_info, prep_data
+    #     )
+
+    return my_nodes_ady
+
+
+def init(big_object_arg, big_object_arg2):
+    global nodes_ady, prep_data
+    nodes_ady = big_object_arg
+    prep_data = big_object_arg2
+
+
+def apply_patient(instance, patient_info):
+    global nodes_ady, prep_data
+    return get_nodes_ady_per_patient(instance, nodes_ady, patient_info, prep_data)
+
+
+def get_nodes_ady_per_patient(
+    instance: Instance,
+    nodes_ady: SuperDict[Node, set[Node]],
+    patient_info: SuperDict,
+    prep_data: dict[str, any],
+) -> SuperDict[Node, list[Node]]:
+    print(f"Process {os.getpid()}, Patient {patient_info['id']}, start nodes_ady")
+    _by_start = prep_data["_by_start"]
+    _by_room = prep_data["_by_room"]
+    _by_type = prep_data["_by_type"]
+    _by_length = prep_data["_by_length"]
+    _by_pos = prep_data["_by_pos"]
+    day_range = prep_data["day_range"]
+    length_p = prep_data["length_p"]
+
+    sink = get_sink_node(instance)
+    source = get_source_node(instance)
+    theater_occupant = get_theater_occupant(instance)
+    patient = patient_info["id"]
+    # if the type is nurse, we only allow those that start in the range
+    # if not source or sink, we cannot have a shift before the available start
+    # if not nurse or dummy, we cannot have a shift after the last start
+    all_sets = [_by_start[d * 3] for d in day_range[patient]]
+    my_nodes = set.union(*all_sets)
+    if patient_info["is_occupant"]:
+        # if occupant, we only permit their room
+        my_room = instance.get_occupants()[patient]["room_id"]
+        # only filter if type==room or type=nurse
+        # which means room is my room or None
+        possible = _by_room[my_room] | _by_room[None]
+        my_nodes &= possible
+    else:
+        # if not occupant, we take out the ban rooms for the patient
+        ban_rooms = (
+            instance.get_patient_room_ban()
+            .keys_tl()
+            .to_dict(1)
+            .get(patient_info["id"], [])
+        )
+        if len(ban_rooms) > 0:
+            forbidden = set.union(*[_by_room[r] for r in ban_rooms])
+            my_nodes -= forbidden
+
+    if patient_info["is_occupant"]:
+        # if occupant, then theater can only be None (-1)
+        my_nodes -= _by_type[TYPE.THEATER]
+        my_nodes.add(theater_occupant)
+    else:
+        # if patient, we take out the None (-1) option
+        my_nodes -= {theater_occupant}
+
+    # also, length_of_day determines the number of shifts
+    # we delete nodes that go over the length of stay
+    my_nodes &= _by_length[length_p[patient]]
+
+    # we make sure that source is always available:
+    #  sink has no edges so it's not on the list
+    my_nodes |= {source}
+
+    # we now get the arcs to edit them
+    my_nodes_ady = nodes_ady.filter(my_nodes)
+
+    # also, length_of_day determines the number of shifts
+    last_horizon_shift = instance.get_last_shift_horizon()
+    last_shift = patient_info["length_of_stay"] * 3 - 1
+    for node, neighbors in my_nodes_ady.items():
+        # we filter all neighbors to be inside the set of nodes
+        #  this takes out the sink node
+        my_nodes_ady[node] = neighbors & my_nodes
+        # a patient can only go to the sink from the last shift
+        # or at the end of the planning horizon
+        if node.pos_shift == last_shift or node.shift == last_horizon_shift:
+            my_nodes_ady[node].add(sink)
+
+    # if the patient is not mandatory, we keep the edge from source to sink:
+    #  if it's mandatory we take out the sink
+    sink_connected = sink in my_nodes_ady[source]
+    if patient_info.get("mandatory", True):
+        if sink_connected:
+            my_nodes_ady[source].remove(sink)
+    else:
+        if not sink_connected:
+            my_nodes_ady[source].add(sink)
+    print(f"Process {os.getpid()}, Patient {patient_info['id']}, ends nodes_ady")
+    return my_nodes_ady
