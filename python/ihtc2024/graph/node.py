@@ -4,6 +4,7 @@ import orjson as json
 from typing import Dict
 import os
 import multiprocessing as multi
+import random as rn
 
 
 class TYPE(object):
@@ -390,11 +391,10 @@ def get_nodes_ady_par(instance, num_workers=4, **kwargs):
 
 
 def nodes_per_patient(
-    nodes_ady: SuperDict[Node, list[Node]], instance: Instance
+    nodes_ady: SuperDict[Node, list[Node]], instance: Instance, maxSample=10
 ) -> SuperDict:
-    # TODO: test this
     nodes = nodes_ady.keys()
-    nodes_ady = nodes_ady.vapply(set)
+    # nodes_ady = nodes_ady.vapply(set)
     day_range = instance.get_patient_occupants_available_starts()
     patients = instance.get_patients_occupants()
     length_p = patients.get_property("length_of_stay")
@@ -451,48 +451,56 @@ def nodes_per_patient(
     }
     my_nodes_ady = SuperDict()
     results = {}
-    with multi.Manager() as manager:
-        # Create a shared object
-        shared_object = manager.dict(nodes_ady)
-        shared_object1 = manager.dict(prep_data)
-
-        # Create a pool of worker processes
-        with multi.Pool(processes=4) as pool:
-            # Pass the shared object to the worker processes
-            # pool.map(worker, [shared_object] * 4)
-            for p, patient_info in patients.items():
-                results[p] = pool.apply_async(
-                    get_nodes_ady_per_patient,
-                    [instance, shared_object, patient_info, shared_object1],
-                )
-            for p, a in results.items():
-                my_nodes_ady[p] = a.get()
-    # for p, patient_info in patients.items():
-    #     my_nodes_ady[p] = get_nodes_ady_per_patient(
-    #         instance, nodes_ady, patient_info, prep_data
-    #     )
+    # with multi.Pool(processes=8) as pool:
+    #     for p, patient_info in patients.items():
+    #         results[p] = pool.apply_async(
+    #             get_nodes_ady_per_patient, [instance, patient_info, prep_data]
+    #         )
+    #     for p, a in results.items():
+    #         my_nodes_ady[p] = a.get()
+    # with multi.Manager() as manager:
+    #     # Create a shared object
+    #     shared_object = manager.dict(nodes_ady)
+    #     shared_object1 = manager.dict(prep_data)
+    #
+    #     # Create a pool of worker processes
+    #     with multi.Pool(processes=4) as pool:
+    #         # Pass the shared object to the worker processes
+    #         # pool.map(worker, [shared_object] * 4)
+    #         for p, patient_info in patients.items():
+    #             results[p] = pool.apply_async(
+    #                 get_nodes_ady_per_patient,
+    #                 [instance, shared_object, patient_info, shared_object1],
+    #             )
+    #         for p, a in results.items():
+    #             my_nodes_ady[p] = a.get()
+    for p, patient_info in patients.items():
+        my_nodes_ady[p] = get_nodes_ady_per_patient(instance, patient_info, prep_data)
 
     return my_nodes_ady
 
 
-def init(big_object_arg, big_object_arg2):
-    global nodes_ady, prep_data
-    nodes_ady = big_object_arg
-    prep_data = big_object_arg2
-
-
-def apply_patient(instance, patient_info):
-    global nodes_ady, prep_data
-    return get_nodes_ady_per_patient(instance, nodes_ady, patient_info, prep_data)
+# def init(big_object_arg, big_object_arg2):
+#     global nodes_ady, prep_data
+#     nodes_ady = big_object_arg
+#     prep_data = big_object_arg2
+#
+#
+# def apply_patient(instance, patient_info):
+#     global nodes_ady, prep_data
+#     return get_nodes_ady_per_patient(instance, nodes_ady, patient_info, prep_data)
+#
 
 
 def get_nodes_ady_per_patient(
     instance: Instance,
-    nodes_ady: SuperDict[Node, set[Node]],
+    # nodes_ady: SuperDict[Node, set[Node]],
     patient_info: SuperDict,
     prep_data: dict[str, any],
-) -> SuperDict[Node, list[Node]]:
+) -> set[Node]:
     print(f"Process {os.getpid()}, Patient {patient_info['id']}, start nodes_ady")
+    # TODO, change hardocded values
+    maxSample = 15
     _by_start = prep_data["_by_start"]
     _by_room = prep_data["_by_room"]
     _by_type = prep_data["_by_type"]
@@ -508,7 +516,16 @@ def get_nodes_ady_per_patient(
     # if the type is nurse, we only allow those that start in the range
     # if not source or sink, we cannot have a shift before the available start
     # if not nurse or dummy, we cannot have a shift after the last start
-    all_sets = [_by_start[d * 3] for d in day_range[patient]]
+
+    def sample_range(day_range):
+        my_sample = rn.sample(day_range, k=min(maxSample, len(day_range)))
+        return sorted(my_sample)
+
+    my_range = day_range[patient]
+    if len(my_range) > maxSample and not patient_info.get("mandatory", True):
+        print("reduced range from {} to {}".format(len(my_range), maxSample))
+        my_range = sample_range(my_range)
+    all_sets = [_by_start[d * 3] for d in my_range]
     my_nodes = set.union(*all_sets)
     if patient_info["is_occupant"]:
         # if occupant, we only permit their room
@@ -545,29 +562,29 @@ def get_nodes_ady_per_patient(
     #  sink has no edges so it's not on the list
     my_nodes |= {source}
 
-    # we now get the arcs to edit them
-    my_nodes_ady = nodes_ady.filter(my_nodes)
-
-    # also, length_of_day determines the number of shifts
-    last_horizon_shift = instance.get_last_shift_horizon()
-    last_shift = patient_info["length_of_stay"] * 3 - 1
-    for node, neighbors in my_nodes_ady.items():
-        # we filter all neighbors to be inside the set of nodes
-        #  this takes out the sink node
-        my_nodes_ady[node] = neighbors & my_nodes
-        # a patient can only go to the sink from the last shift
-        # or at the end of the planning horizon
-        if node.pos_shift == last_shift or node.shift == last_horizon_shift:
-            my_nodes_ady[node].add(sink)
-
-    # if the patient is not mandatory, we keep the edge from source to sink:
-    #  if it's mandatory we take out the sink
-    sink_connected = sink in my_nodes_ady[source]
-    if patient_info.get("mandatory", True):
-        if sink_connected:
-            my_nodes_ady[source].remove(sink)
-    else:
-        if not sink_connected:
-            my_nodes_ady[source].add(sink)
-    print(f"Process {os.getpid()}, Patient {patient_info['id']}, ends nodes_ady")
-    return my_nodes_ady
+    # # we now get the arcs to edit them
+    # my_nodes_ady = nodes_ady.filter(my_nodes)
+    #
+    # # also, length_of_day determines the number of shifts
+    # last_horizon_shift = instance.get_last_shift_horizon()
+    # last_shift = patient_info["length_of_stay"] * 3 - 1
+    # for node, neighbors in my_nodes_ady.items():
+    #     # we filter all neighbors to be inside the set of nodes
+    #     #  this takes out the sink node
+    #     my_nodes_ady[node] = neighbors & my_nodes
+    #     # a patient can only go to the sink from the last shift
+    #     # or at the end of the planning horizon
+    #     if node.pos_shift == last_shift or node.shift == last_horizon_shift:
+    #         my_nodes_ady[node].add(sink)
+    #
+    # # if the patient is not mandatory, we keep the edge from source to sink:
+    # #  if it's mandatory we take out the sink
+    # sink_connected = sink in my_nodes_ady[source]
+    # if patient_info.get("mandatory", True):
+    #     if sink_connected:
+    #         my_nodes_ady[source].remove(sink)
+    # else:
+    #     if not sink_connected:
+    #         my_nodes_ady[source].add(sink)
+    # print(f"Process {os.getpid()}, Patient {patient_info['id']}, ends nodes_ady")
+    return my_nodes

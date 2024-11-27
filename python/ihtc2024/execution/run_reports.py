@@ -1,4 +1,6 @@
 from functools import reduce
+
+import numpy as np
 import pandas as pd
 
 from run_batch import my_table
@@ -13,8 +15,8 @@ test_cases = dict(
 competition_cases = dict(
     timefold_py="2024-11-08T2311-system76-pc",
     cpsat="2024-11-09T1227-system76-pc",
-    cpsat2="2024-11-18T2039-system76-pc",
-    graph="2024-11-15T1610-system76-pc",
+    cpsat3="2024-11-19T2108-system76-pc",
+    graph="2024-11-20T2247-system76-pc",
 )
 if __name__ == "__main__":
 

@@ -354,12 +354,14 @@ class CpSAT(Experiment):
         max_sample = options.get("maxSample")
         if max_sample is not None:
 
-            def sample_range(day_range):
+            def sample_range(patient, day_range):
+                if patients[patient].get("mandatory", True):
+                    return day_range
                 my_sample = rn.sample(day_range, k=min(max_sample, len(day_range)))
                 return sorted(my_sample)
 
-            possible_start = possible_start.vapply(sample_range)
-            available_rooms__p = available_rooms__p.vapply(sample_range)
+            possible_start = possible_start.kvapply(sample_range)
+            available_rooms__p = available_rooms__p.kvapply(sample_range)
 
         operation_theaters = self.instance.get_operatingtheaters().copy_deep()
         patients_occupants = self.instance.get_patients_occupants()

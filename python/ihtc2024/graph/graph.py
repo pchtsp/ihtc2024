@@ -21,7 +21,11 @@ class GraphTool(object):
     patient_graphs: Dict[str, gr.GraphView]
 
     def __init__(
-        self, instance, nodes_ady: Dict[Node, list[Node]], patient_graphs=True
+        self,
+        instance,
+        nodes_ady: Dict[Node, list[Node]],
+        patient_graphs=True,
+        nodes_ady_p=None,
     ):
         print(f"Process {os.getpid()}, graph starts")
         self.instance = instance
@@ -116,11 +120,18 @@ class GraphTool(object):
         # for each patient_occupant, we create a view of the graph
         # that filters the nodes and edges that are not feasible
         # for that patient_occupant
+        patients = self.instance.get_patients_occupants()
         if patient_graphs:
+            self.patient_graphs = {}
+            print("Start creating patient views")
             log.info("Start creating patient views")
-            self.patient_graphs = self.instance.get_patients_occupants().vapply(
-                self.patient_view
-            )
+            for p, patient_info in patients.items():
+                print(f"Patient views: {p}")
+                nodes = [self.refs[n] for n in nodes_ady_p[p]]
+                self.patient_graphs[p] = self.patient_view2(patient_info, nodes)
+            # self.patient_graphs = self.instance.get_patients_occupants().vapply(
+            #
+            # )
             log.info("Finish creating patient views")
         # some cache:
         self.__needs__p__s = self.instance.get_patients_occupants_needs().to_dictdict()
@@ -139,6 +150,44 @@ class GraphTool(object):
         return gr.shortest_distance(
             self.g, source=source, target=target, dag=True, **kwargs
         )
+
+    def patient_view2(self, patient_info, nodes: list):
+        vfilt = self.g.new_vp("bool", val=0)
+        vfilt.a[nodes] = 1
+
+        efilt = self.g.new_ep("bool", val=1)
+        shift_arr = self.shift_vp.get_array()
+        shift_pos_arr = self.pos_shift_vp.get_array()
+        sink = self.get_sink_node()
+        source = self.get_source_node()
+
+        edges_all = self.edges
+        targets = edges_all[:, 1]
+        sources = edges_all[:, 0]
+        # also, length_of_day determines the number of shifts
+        # a patient can only go to the sink from the last shift
+        last_shift = patient_info["length_of_stay"] * 3 - 1
+        last_horizon_shift = self.instance.get_last_shift_horizon()
+        # incomplete_stay_before_end = (shift_pos_arr != last_shift) & (
+        #     shift_arr != last_horizon_shift
+        # )
+        last_shift_or_very_last = (shift_pos_arr == last_shift) | (
+            shift_arr == last_horizon_shift
+        )
+        # TODO: failing for occupants it seems
+        my_sources = np.where(last_shift_or_very_last)[0]
+        # activate = [self.g.edge(self.g.vertex(s), sink) for s in my_sources]
+        # my_targets = np.full_like(sources, sink)
+        # efilt.a[(targets == sink) & incomplete_stay_before_end[sources]] = 0
+        efilt.a[targets == sink] = 0
+        sink_i = self.g.vertex_index[sink]
+        for n in my_sources:
+            efilt[n, sink_i] = 1
+        # if the patient is not mandatory, we keep the edge from source to sink:
+        if not patient_info.get("mandatory", True):
+            efilt[source, sink] = 1
+
+        return gr.GraphView(self.g, vfilt=vfilt, efilt=efilt)
 
     def patient_view(self, patient_info):
         vfilt = self.g.new_vp("bool", val=0)
