@@ -394,7 +394,6 @@ def nodes_per_patient(
     nodes_ady: SuperDict[Node, list[Node]], instance: Instance, maxSample=10
 ) -> SuperDict:
     nodes = nodes_ady.keys()
-    # nodes_ady = nodes_ady.vapply(set)
     day_range = instance.get_patient_occupants_available_starts()
     patients = instance.get_patients_occupants()
     length_p = patients.get_property("length_of_stay")
@@ -450,30 +449,6 @@ def nodes_per_patient(
         "length_p": length_p,
     }
     my_nodes_ady = SuperDict()
-    results = {}
-    # with multi.Pool(processes=8) as pool:
-    #     for p, patient_info in patients.items():
-    #         results[p] = pool.apply_async(
-    #             get_nodes_ady_per_patient, [instance, patient_info, prep_data]
-    #         )
-    #     for p, a in results.items():
-    #         my_nodes_ady[p] = a.get()
-    # with multi.Manager() as manager:
-    #     # Create a shared object
-    #     shared_object = manager.dict(nodes_ady)
-    #     shared_object1 = manager.dict(prep_data)
-    #
-    #     # Create a pool of worker processes
-    #     with multi.Pool(processes=4) as pool:
-    #         # Pass the shared object to the worker processes
-    #         # pool.map(worker, [shared_object] * 4)
-    #         for p, patient_info in patients.items():
-    #             results[p] = pool.apply_async(
-    #                 get_nodes_ady_per_patient,
-    #                 [instance, shared_object, patient_info, shared_object1],
-    #             )
-    #         for p, a in results.items():
-    #             my_nodes_ady[p] = a.get()
     for p, patient_info in patients.items():
         my_nodes_ady[p] = get_nodes_ady_per_patient(instance, patient_info, prep_data)
 
@@ -500,7 +475,7 @@ def get_nodes_ady_per_patient(
 ) -> set[Node]:
     print(f"Process {os.getpid()}, Patient {patient_info['id']}, start nodes_ady")
     # TODO, change hardocded values
-    maxSample = 15
+    maxSample = 50
     _by_start = prep_data["_by_start"]
     _by_room = prep_data["_by_room"]
     _by_type = prep_data["_by_type"]
@@ -509,7 +484,6 @@ def get_nodes_ady_per_patient(
     day_range = prep_data["day_range"]
     length_p = prep_data["length_p"]
 
-    sink = get_sink_node(instance)
     source = get_source_node(instance)
     theater_occupant = get_theater_occupant(instance)
     patient = patient_info["id"]

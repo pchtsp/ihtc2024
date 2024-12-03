@@ -22,5 +22,5 @@ Also check here for how to add it to the virtual environment https://jolo.xyz/bl
 
 ```bash
 sudo apt-get install python3-graph-tool
-sudo apt-get install libgtk-3-dev libgirepository1.0-dev
+sudo apt-get install libgtk-3-dev libgirepository1.0-dev libcairo2-dev pkg-config python3-dev libgirepository1.0-dev
 ```

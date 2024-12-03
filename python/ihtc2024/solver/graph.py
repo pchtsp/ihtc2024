@@ -1,7 +1,7 @@
 import numpy as np
 
 from ..core.experiment import Experiment
-from ihtc2024.graph import get_nodes_ady_par
+from ihtc2024.graph import get_nodes_ady_par, nodes_per_patient
 from ihtc2024.graph.graph import GraphTool
 import time
 
@@ -43,22 +43,20 @@ class Graph(Experiment):
         )
         log.info(f"end creating nodes: {len(nodes_ady)} nodes")
         log.info(f"Creating Graph")
-        my_graph = GraphTool(instance=self.instance, nodes_ady=nodes_ady)
-        # all_graphs = {}
-        # for patient_info in patients_occupants_s:
-        #     my_id = patient_info["id"]
-        #     all_graphs[my_id] = GraphTool(
-        #         my_graph.instance,
-        #         nodes_ady=None,
-        #         gt=my_graph,
-        #         patient_info=patient_info,
-        #     )
+        my_nodes__p = nodes_per_patient(nodes_ady, self.instance)
+        my_graph = GraphTool(
+            instance=self.instance,
+            nodes_ady=nodes_ady,
+            nodes_ady_p=my_nodes__p,
+        )
         log.info(f"Graph created: {my_graph.g.num_edges()} edges")
         best_obj = np.Inf
         best_sol = None
+        time_limit = options.get("timeLimit", 60)
         for i in range(2):
             for patient_info in patients_occupants_s:
-                if time.time() - time_init > options.get("timeLimit", 60):
+                if time.time() - time_init > time_limit:
+                    log.info(f"TimeLimit ({time_limit}) reached")
                     break
                 patient_id = patient_info["id"]
                 log.debug(f"Pattern: {patient_id}")

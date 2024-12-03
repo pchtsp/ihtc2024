@@ -20,7 +20,8 @@ competition_cases = dict(
 )
 if __name__ == "__main__":
 
-    cases = competition_cases
+    # cases = competition_cases
+    cases = test_cases
     table_dict = {k: my_table(v) for k, v in cases.items()}
     info = "errors"
     info = "time"

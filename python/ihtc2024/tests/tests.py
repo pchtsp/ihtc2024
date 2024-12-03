@@ -271,9 +271,15 @@ class TestInstance(unittest.TestCase):
 
     def test_time_nodes_per_patient(self):
         my_experim = self.get_test_experiment("i19.json")
+        # my_experim = self.get_test_experiment("i01.json")
+        # my_experim = self.get_test_experiment("i15.json")
         nodes_ady = gr.get_nodes_ady_par(my_experim.instance, num_workers=8)
-
-        # nodes_per_patient = gr.nodes_per_patient(nodes_ady, my_experim.instance)
+        nodes_per_patient = gr.nodes_per_patient(nodes_ady, my_experim.instance)
+        my_graph = GraphTool(
+            instance=my_experim.instance,
+            nodes_ady=nodes_ady,
+            nodes_ady_p=nodes_per_patient,
+        )
         # import multiprocessing as multi
         #
         # results = {}

@@ -483,20 +483,23 @@ class Experiment(ExperimentCore):
         if options.get("msg", False):
             level = log.DEBUG
         logFile = options.get("logPath")
-        open(logFile, "w").close()
         logFormat = "%(asctime)s %(levelname)s:%(message)s"
         formatter = log.Formatter(logFormat)
-
-        # to file:
-        file_log_handler = log.FileHandler(logFile, "a")
-        file_log_handler.setFormatter(formatter)
+        file_log_handler = None
+        if logFile:
+            open(logFile, "w").close()
+            # to file:
+            file_log_handler = log.FileHandler(logFile, "a")
+            file_log_handler.setFormatter(formatter)
 
         # to command line
         stderr_log_handler = log.StreamHandler()
         stderr_log_handler.setFormatter(formatter)
 
         outputs = {"file": file_log_handler, "console": stderr_log_handler}
-        output_choices = options.get("logOutput", ["file"])
+        output_choices = options.get("logOutput", [])
+        if logFile:
+            output_choices.append("file")
 
         _log = log.getLogger()
         _log.handlers = [v for k, v in outputs.items() if k in output_choices]
