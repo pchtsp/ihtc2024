@@ -433,12 +433,11 @@ class Experiment(ExperimentCore):
         # I need to make the assignments for the patient: room, theater, admission
         # I need to make the assignments for nurses: per shift and room
         # I can start in node 4
-        if len(pattern) == 0:
-            raise ValueError("Pattern is empty")
-        assignments = self.solution.get_patient_assignment()
-        if len(pattern) == 2:
+        if len(pattern) <= 2:
             # we decided to not take the patient.
             return 0
+
+        assignments = self.solution.get_patient_assignment()
         my_node = 4
         # occupants are already assigned
         if not patient_info["is_occupant"]:

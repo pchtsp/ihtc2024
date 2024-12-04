@@ -9,6 +9,7 @@ import logging as log
 from typing import List
 from datetime import datetime
 import socket
+import traceback
 from cornflow_client.constants import (
     SOLUTION_STATUS_FEASIBLE,
     SOLUTION_STATUS_INFEASIBLE,
@@ -80,6 +81,7 @@ def solve_zip(
             )
             with open(os.path.join(experiment_dir, "error.txt"), "w") as f:
                 f.write(str(e))
+                f.write(traceback.format_exc())
 
         # export everything:
         _log = dict(

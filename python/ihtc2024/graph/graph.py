@@ -536,6 +536,8 @@ class GraphTool(object):
         )
         new_patient_penalty = np.zeros_like(proposed_skill_level)
         for pos, required in shift_sl_needs.items():
+            if pos not in self.nodes__pos:
+                continue
             relevant_nodes = self.nodes__pos[pos]
             new_patient_penalty[relevant_nodes] = (
                 required - proposed_skill_level[relevant_nodes]
@@ -600,6 +602,8 @@ class GraphTool(object):
             .vfilter(lambda v: v > 0)
         )
         for pos, load in shift_wl_needs.items():
+            if pos not in self.nodes__pos:
+                continue
             relevant_nodes = self.nodes__pos[pos]
             change_load_n2[relevant_nodes] += load
 
