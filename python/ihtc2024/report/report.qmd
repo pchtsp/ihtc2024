@@ -1,0 +1,460 @@
+---
+title: "Integrated Healthcare Timetabling Competition 2024"
+format:
+  html:
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+toc: true
+toc-location: left
+toc-expand: 2
+toc-depth: 3
+execute:
+  echo: false
+  keep-ipynb: false
+  keep-md: false
+---
+
+```{python}
+#| tags: [parameters]
+
+# file_name = "../tests/data/"
+file_name = '/home/pchtsp/Documents/projects/ihtc2024/python/ihtc2024/tests/data'
+
+```
+
+  
+
+```{python}
+
+import os, sys
+module_path = os.path.abspath(os.path.join('../..'))
+if module_path not in sys.path:
+    sys.path.append(module_path)
+
+from ihtc2024.core import Instance, Experiment
+import numpy as np
+import pandas as pd
+import plotnine as pl
+import re
+from functools import reduce
+
+
+```
+
+```{python}
+
+extension = os.path.splitext(file_name)[1]
+
+if extension in ['.xlsx', '.xls']:
+  my_load_func = Experiment.from_excel
+elif extension=='.json':
+  my_load_func = Experiment.from_json
+elif extension=='':
+  def my_load_func(path):
+    return Experiment.from_ihtc_dir(path, "toy.json", "toy_solution.json")
+else:
+  raise ValueError("Unknown extension: {}".format(extension))
+
+my_experiment = my_load_func(file_name)
+my_instance = my_experiment.instance
+
+# TODO: delete these test:
+# my_experiment.solution.data['patient_assignment'].pop('p5')
+# my_experiment.solution.data['patient_assignment']['p0']['room'] = 'r1'
+# my_experiment.solution.data['patient_assignment']['p5']['admission_day'] = 4
+# my_experiment.solution.data['patient_assignment']['p6']['admission_day'] = 4
+
+# h7=capacity_overuse,
+# h4=ot_overtime,
+
+```
+
+# Introduction
+
+The Integrated Healthcare Timetabling Competition (IHTC) 2024 is an event that challenges participants to solve complex scheduling problems in a healthcare setting. The competition focuses on the Integrated Healthcare Timetabling Problem (IHTP), which involves coordinating various resources and services within a hospital to optimize patient care and operational efficiency.
+
+The IHTP requires participants to make several key decisions, including:
+
+1. Determining the admission date for each patient.
+2. Assigning rooms to patients for the duration of their stay.
+3. Scheduling nurses for each room during each shift.
+4. Allocating operating theaters for surgical cases.
+
+Participants must consider numerous hard and soft constraints, such as ensuring that patients are assigned to compatible rooms, avoiding surgeon and nurses overtime, and minimizing the number of distinct nurses assigned to each patient. The goal is to create a feasible and efficient schedule that meets all constraints and optimizes resource utilization.
+
+More information can be found in the webpage of the contest here: https://ihtc2024.github.io/
+
+For a direct link to the problem specification including context, all definitions, constraints and decisions, go here: https://ihtc2024.github.io/assets/files/ihtc2024_problem_specification.pdf
+
+
+```{python}
+# prepare some statistics.
+
+patients = my_instance.get_patients()
+optional = patients.vfilter(lambda v: not v['mandatory'])
+occupants = my_instance.get_occupants()
+horizon = my_instance.get_horizon_days()
+rooms = my_instance.get_rooms()
+theaters = my_instance.get_operatingtheaters()
+patient_shifts = my_instance.get_patient_shifts()
+nurse_shifts = my_instance.get_nurse_shift()
+surgeon_capacity = my_instance.get_surgeon_capacity()
+```
+
+# Instance
+
+## Statistics
+
+* Number of patients (of which optional): `{python} len(patients)` (`{python} len(optional)`).
+* Number of occupants: `{python} len(occupants)`.
+* Size of planning horizon: `{python} len(horizon)` days.
+* Number of rooms: `{python} len(rooms)`
+
+
+@fig-patient-length-dist shows the distribution of lengths of stay of patients.
+
+```{python}
+#| label: fig-patient-length-dist
+#| fig-cap: "Distribution of length of stay for patients"
+
+lengths_stay = patients.get_property("length_of_stay").values_l()
+
+pl.ggplot(pd.DataFrame(dict(length=lengths_stay)), pl.aes(x='length')) + pl.geom_histogram(bins=8, fill="lightblue") + pl.theme_minimal() + pl.xlab("Length of stay") + pl.ylab("Frequency")
+
+```
+
+@fig-patient-start-dist shows the distribution of potential start dates for patients and occupants.
+
+```{python}
+#| label: fig-patient-start-dist
+#| fig-cap: "Distribution of possible starts for patients"
+
+starts = my_instance.get_patient_occupants_available_starts().vapply(list).to_tuplist().to_df().rename(columns={0: 'patient', 1: 'start'})
+
+pl.ggplot(starts, pl.aes(x='start')) + pl.geom_histogram(bins=8, fill="lightblue") + pl.theme_minimal() + pl.xlab("Possible starts") + pl.ylab("Frequency")
+
+```
+
+```{python}
+objective = my_experiment.get_objective()
+checks = my_experiment.check_solution()
+coupling_checks = my_experiment.calculate_coupling_checks()
+feasible = len(checks.vfilter(lambda v: v)) == 0
+assignments = my_experiment.get_all_assignments()
+obj_terms_raw = my_experiment.get_objective_terms_raw()
+nurse_assignments = my_experiment.get_nurse_assignment_shift()
+
+```
+
+
+# Solution 
+
+```{python}
+#| output: asis
+
+# The following code shows (1) a box with feasibility + objective function OR (2) root cause of infeasibility.
+
+if feasible:
+  my_text = f"Solution is feasible and objective is {objective}"
+  print("::: {{.callout-tip}}\n\n## {}.\n\n:::".format(my_text))
+else:
+  my_text = ""
+  print("::: {{.callout-important}}\n\n## Solution is infeasible\n\n{}\n\n:::".format(my_text))
+
+```
+
+## Nurse calendar
+
+For each room, the calendar of nurses assigned for each shift and day.
+
+```{python}
+#| label: fig-nurse-calendar
+#| fig-cap: "Nurse room assignments by shift and day"
+
+nurse_df = nurse_assignments.values_tl().to_df()
+
+(
+  pl.ggplot(nurse_df, pl.aes(x='day', y='shift', fill='id')) + 
+  pl.geom_tile() + 
+  pl.theme_minimal() + pl.facet_wrap('room', ncol=1) + pl.geom_text(pl.aes(label='id')) + pl.theme(legend_position='bottom') + pl.labs(fill='Nurse')
+)
+```
+
+## Patient calendar
+
+Below the calendar of patients staying in each room, colored by gender and age group.
+
+```{python}
+#| label: fig-patient-calendar
+#| fig-cap: "Patients' stay by room, age and age group"
+
+patients_occ = my_instance.get_patients_occupants()
+my_assignments = assignments.copy_deep()
+for k, a in my_assignments.items():
+  a.pop('id', None)
+  my_assignments[k] = dict(**a, **patients_occ[k])
+my_assignments_df = my_assignments.values_tl().to_df()
+my_assignments_df['end'] = my_assignments_df.admission_day + my_assignments_df.length_of_stay
+my_assignments_df['lab_pos'] = my_assignments_df.admission_day + my_assignments_df.length_of_stay/2
+
+my_rooms = my_assignments.get_property("room").values_tl().unique2()
+xintercepts = [1.5 + i for i in range(len(my_rooms)-1)]
+(
+  pl.ggplot(my_assignments_df, pl.aes(ymin='admission_day', ymax='end', x='room', color='gender', linetype='age_group')) 
+  + pl.geom_linerange(size=2, position = pl.position_dodge2(1)) 
+  + pl.coord_flip() 
+  + pl.theme_minimal() 
+  + pl.geom_label(pl.aes(y='lab_pos', label='id', x='room'), position = pl.position_dodge2(1)) 
+  + pl.geom_vline(xintercept=xintercepts, colour="black")
+  + pl.ylab("day") + pl.xlab("room")
+  + pl.theme(legend_position='bottom')
+)
+```
+
+## Hard constraints
+
+### Mixed gender
+
+Maximum one gender of patients in a given room-day.
+
+```{python}
+#| label: fig-room-mixed-gender
+#| fig-cap: "Days where a given room has more than one gender"
+
+col_rename = dict(enumerate(['room', 'day', 'value']))
+mixed_gender = checks['h1'].vapply(lambda v: 'red').to_tuplist().to_df().rename(columns=col_rename)
+
+plot = pl.ggplot(mixed_gender, pl.aes(x='day', y='room')) + pl.geom_tile(fill='#c00000') + pl.theme_minimal() + pl.scale_x_continuous(limits=[0, horizon[-1]+1])
+if not mixed_gender.empty:
+  display(plot)
+```
+
+### Mandatory patients
+
+We should schedule all mandatory patients.
+
+Total number of unscheduled mandatory patients: `{python} len(checks['h5'])` of `{python} len(patients.vfilter(lambda v: v['mandatory']))`.
+
+```{python}
+#| label: fig-patient-unschedule-mandatory
+#| fig-cap: "Distribution of unscheduled mandatory patients"
+
+first_start = patients.get_property('surgery_release_day')
+col_rename = dict(enumerate(['patient', 'start', 'value']))
+
+optional_df = checks['h5'].to_dict(None).kvapply(lambda k, v: (first_start[k], v)).to_tuplist().to_df().rename(columns=col_rename)
+
+plot = pl.ggplot(optional_df, pl.aes(x='start')) + pl.geom_histogram(bins=8) + pl.theme_minimal() + pl.ylab("Number of mandatory patients") + pl.xlab("Surgery release day")
+if not optional_df.empty:
+  display(plot)
+```
+
+### Banned rooms
+
+We should schedule patients to a compatible room.
+
+
+```{python}
+#| label: tbl-patient-banned-room
+#| tbl-cap: "Patient-room forbidden assignments"
+
+col_rename = dict(enumerate(['patient', 'room']))
+rooms_df = checks['h2'].to_df().rename(columns=col_rename)
+
+display(rooms_df)
+```
+
+### Surgen overtime
+
+We should not assign overtime to surgeons in each day.
+
+```{python}
+#| label: fig-surgeon-overtime
+#| fig-cap: "Overtime by surgeons per day"
+
+col_rename = dict(enumerate(['surgeon', 'day', 'used', 'excess', 'remaining']))
+max_time = surgeon_capacity.get_property("max_surgery_time")
+surgeon_overtime_df = coupling_checks['surgeon_overtime'].kvapply(lambda k, v: (v+max_time[k], max(v, 0), max(-v, 0))).to_tuplist().to_df().rename(columns=col_rename)
+surgeon_overtime_df.used = surgeon_overtime_df.used - surgeon_overtime_df.excess
+
+surgeon_overtime_df = pd.melt(surgeon_overtime_df, id_vars=['surgeon', 'day'], value_vars=['used', 'excess', 'remaining'])
+
+plot = pl.ggplot(surgeon_overtime_df, pl.aes(x='day', y='value', fill='variable')) + pl.geom_col() + pl.facet_wrap('surgeon', scales='free') + pl.ylab("Workload") + pl.theme_minimal() + pl.labs(fill='type')
+if not surgeon_overtime_df.empty:
+  display(plot)
+```
+
+### Wrong admission date
+
+We cannot schedule a patient outside of its valid range (release -> due date).
+
+```{python}
+col_rename = dict(enumerate(['patient', 'admission', 'start', 'end']))
+late_admission_df = checks['h6'].to_tuplist().to_df().rename(columns=col_rename)
+
+if not late_admission_df.empty:
+  late_admission_df.start = late_admission_df.start - 0.05
+  late_admission_df.end = late_admission_df.end + 0.05
+
+  plot = (
+  pl.ggplot(late_admission_df, pl.aes(y='patient', yend='patient')) + 
+  pl.geom_segment(pl.aes(x='start', xend='end'), size=3, color='black') + 
+  pl.theme_minimal() + 
+  pl.geom_point(pl.aes(x='start'), color='black', size=3) +
+  pl.geom_point(pl.aes(x='end'), color='black', size=3) +
+  pl.geom_point(pl.aes(x='admission'), color='red', size=3)
+  )
+  display(plot)
+
+```
+
+## Soft constraints
+
+### Mixed age
+
+We should reduce the max difference of age groups for each room and each day.
+
+```{python}
+#| label: fig-room-mixed-age
+#| fig-cap: "Minimum and maximum age per room and day"
+
+col_rename = dict(enumerate(['room', 'day', 'age_min', 'age_max']))
+room_mixed_age = obj_terms_raw['room_mixed_age'].to_tuplist().to_df().rename(columns=col_rename)
+
+room_mixed_age = pd.melt(room_mixed_age, id_vars=['room', 'day'], value_vars=['age_min', 'age_max'])
+
+plot = pl.ggplot(room_mixed_age, pl.aes(x='day', y='value', color='variable')) + pl.geom_step(size=3) + pl.facet_wrap('room', ncol=1) + pl.theme_minimal()
+if not room_mixed_age.empty:
+  display(plot)
+
+```
+
+### Optional patients
+
+We should schedule as many optional patients as possible.
+
+Total number of unscheduled optional patients: `{python} len(obj_terms_raw['unscheduled_optional'])` of `{python} len(patients.vfilter(lambda v: not v['mandatory']))`.
+
+```{python}
+#| label: fig-patient-unschedule
+#| fig-cap: "Distribution of unscheduled optional patients"
+
+first_start = patients.get_property('surgery_release_day')
+col_rename = dict(enumerate(['patient', 'start', 'value']))
+
+optional_df = obj_terms_raw['unscheduled_optional'].kvapply(lambda k, v: (first_start[k], v)).to_tuplist().to_df().rename(columns=col_rename)
+
+plot = pl.ggplot(optional_df, pl.aes(x='start')) + pl.geom_histogram(bins=8) + pl.theme_minimal() + pl.ylab("Number of optional patients") + pl.xlab("Surgery release day")
+if not optional_df.empty:
+  display(plot)
+```
+
+
+### Patient delay
+
+```{python}
+#| label: fig-patient-delay
+#| fig-cap: "Treatment delay per patient"
+
+first_start = patients.get_property('surgery_release_day')
+delays = obj_terms_raw['patient_delay']
+col_rename = dict(enumerate(['patient', 'start', 'end']))
+delays_df = delays.kvapply(lambda k, v: (first_start[k], first_start[k] + v)).to_tuplist().to_df().rename(columns=col_rename)
+
+plot = pl.ggplot(delays_df, pl.aes(x='start', xend='end', y='patient', yend='patient')) + pl.geom_segment(size=3, color='red') + pl.theme_minimal()
+if not delays_df.empty:
+  display(plot)
+```
+
+### Open Operating Theaters
+
+```{python}
+#| label: fig-theaters-open
+#| fig-cap: "Theaters that are open in each day"
+
+
+col_rename = dict(enumerate(['theater', 'day', 'value']))
+open_theaters = obj_terms_raw['open_operating_theater'].vapply(lambda v: 'blue').to_tuplist().to_df().rename(columns=col_rename)
+
+plot = pl.ggplot(open_theaters, pl.aes(x='day', y='theater')) + pl.geom_tile(fill='#92d050') + pl.theme_minimal() + pl.scale_x_continuous(limits=[0, horizon[-1]]) + pl.scale_y_discrete(limits=theaters.keys_tl())
+if not open_theaters.empty:
+  display(plot)
+
+```
+
+### Surgeon transfer
+
+```{python}
+#| label: fig-theaters-transfer
+#| fig-cap: "Theaters used by each surgen in each day"
+
+col_rename = dict(enumerate(['surgeon', 'day', 'theater']))
+transfer_df = obj_terms_raw['surgeon_transfer'].vapply(list).to_tuplist().to_df().rename(columns=col_rename)
+transfer_df['value'] = 1
+
+limit_y = max(max(obj_terms_raw['surgeon_transfer'].vapply(len).values()), 5)
+
+plot = pl.ggplot(transfer_df, pl.aes(x='day', y='value', fill='theater')) + pl.geom_col() + pl.theme_minimal() + pl.scale_y_continuous(limits=[0, limit_y]) + pl.ylab("Theaters") + pl.facet_wrap('surgeon', ncol=1)
+if not transfer_df.empty:
+  display(plot)
+```
+
+### Nurse workload
+
+Each nurse should not exceed it shift capacity.
+
+```{python}
+#| label: fig-nurses-workload
+#| fig-cap: "Workload of each nurse per day"
+
+col_rename = dict(enumerate(['nurse', 'shift', 'day', 'used', 'excess', 'remaining']))
+max_load = nurse_shifts.get_property('max_load')
+shift_day = nurse_shifts.get_property('day')
+nurse_wload_df = obj_terms_raw['nurse_eccessive_workload'].kvapply(lambda k, v: (shift_day[k], max_load[k]+v,  max(v, 0), max(-v, 0))).to_tuplist().to_df().rename(columns=col_rename)
+nurse_wload_df.used = nurse_wload_df.used - nurse_wload_df.excess
+
+nurse_wload_df= pd.melt(nurse_wload_df, id_vars=['nurse', 'shift', 'day'], value_vars=['used', 'excess', 'remaining'])
+
+plot = pl.ggplot(nurse_wload_df, pl.aes(x='day', y='value', fill='variable')) + pl.geom_col() + pl.facet_wrap('nurse', scales='free', ncol=3) + pl.ylab("Workload") + pl.theme_minimal() + pl.labs(fill='type')
+if not nurse_wload_df.empty:
+  display(plot)
+```
+
+### Continuity of care
+
+Each patient should have the least number of distinct nurses assigned to him or her throught the stay.
+
+```{python}
+#| label: fig-patient-nurses
+#| fig-cap: "Number of unique nurses treating each patient"
+
+col_rename = dict(enumerate(['patient', 'nurse']))
+patient_nurses = obj_terms_raw['continuity_of_care'].vapply(list).to_tuplist().to_df().rename(columns=col_rename)
+patient_nurses['value'] = 1
+
+plot = pl.ggplot(patient_nurses, pl.aes(x='patient', y='value', fill='nurse')) + pl.geom_col() + pl.theme_minimal() + pl.ylab("Number of nurses")
+if not patient_nurses.empty:
+  display(plot)
+```
+
+### Patient nurse skill requirements
+
+Each patient should have nurses assigned with the required skill (or above), depending on the shift they're in.
+
+```{python}
+#| label: fig-patient-skill
+#| fig-cap: "Nurse skill coverage for each patient"
+
+col_rename = dict(enumerate(['patient', 'shift', 'required', 'obtained', 'deficit']))
+skill_deficit = obj_terms_raw['room_nurse_skill']
+deficit_df = obj_terms_raw['shift_details'].kvapply(lambda k, v: (v['skill_level_required'], v['nurse_skill'], skill_deficit.get(k, 0))).to_tuplist().to_df().rename(columns=col_rename)
+
+obtained_df = deficit_df[['patient', 'shift', 'obtained']]
+deficit_df['used'] = deficit_df.required - deficit_df.deficit
+deficit_df = pd.melt(deficit_df, id_vars=['patient', 'shift'], value_vars=['used', 'deficit'])
+
+plot = pl.ggplot(deficit_df, pl.aes(x='shift', y='value')) + pl.geom_col(pl.aes(fill='variable')) + pl.theme_minimal() + pl.facet_wrap('patient', scales='free') + pl.ylab("Nurse skill level") + pl.geom_step(obtained_df, pl.aes(y='obtained'), linetype="dashed", color='grey', position = pl.position_nudge(x = -0.5)) + pl.scale_fill_manual(values=dict(deficit='#ff0000', used='#92d050'))
+if not deficit_df.empty:
+  display(plot)
+```

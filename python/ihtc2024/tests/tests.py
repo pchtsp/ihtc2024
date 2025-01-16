@@ -2,13 +2,11 @@ import unittest
 import json
 
 from ihtc2024 import Instance, Solution, Experiment, solvers
-import ihtc2024.graph as gr
-from pytups import SuperDict
-import time
 import os, sys
+from html.parser import HTMLParser
+from typing import Dict, List, Tuple, Optional
+from pytups import SuperDict
 
-from ihtc2024.graph.node import get_source_node
-from ihtc2024.graph.graph import GraphTool
 
 tests_dir = os.path.dirname(__file__)
 root_dir = os.path.join(tests_dir, "../")
@@ -113,32 +111,6 @@ class TestInstance(BaseTestInstance):
         except OSError:
             pass
 
-    def test_solve_toy_timefold(self):
-        my_experim = solvers["timefold_py"](self.instance)
-        my_experim.solve(dict(timeLimit=5, msg=True))
-        checks = my_experim.check_solution()
-
-        self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
-        objective = my_experim.get_objective()
-        print(objective)
-        my_experim.run_validator(PATH_TO_VALIDATOR)
-
-    def test_solve_test_instance_1_timefold(self):
-        my_experim_solved = self.get_solved_experiment("test01.json")
-        print(my_experim_solved.get_objective())
-        my_experim_solved.run_validator(PATH_TO_VALIDATOR)
-        my_experim = solvers["timefold_py"](
-            my_experim_solved.instance, my_experim_solved.solution
-        )
-        my_experim.solve(
-            dict(warmStart=True, timeLimit=60, msg=True, fixSolution=False)
-        )
-        checks = my_experim.check_solution()
-        print(checks)
-        # self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
-        objective = my_experim.get_objective()
-        print(objective)
-        my_experim.run_validator(PATH_TO_VALIDATOR)
 
     def test_validator(self):
         my_experim_solved = self.get_solved_experiment("test01.json")
@@ -155,93 +127,76 @@ class TestInstance(BaseTestInstance):
         print(my_experim_solved.get_objective())
         my_experim_solved.run_validator(PATH_TO_VALIDATOR)
 
-    def test_group_nurses(self):
-        nurse_shifts = self.instance.get_nurse_shift()
-        nurse__shift = (
-            nurse_shifts.keys_tl()
-            .to_dict(result_col=0)
-            .vapply(sorted, key=lambda x: int(x[1:]))
+    def test_report(self):
+        my_experim_solved = self.get_solved_experiment("test03.json")
+
+        things_to_look = dict(
+            section=[
+                ("id", "solution"),
+                ("id", "instance"),
+                ("id", "patient-calendar"),
+            ]
         )
-        share_shift = SuperDict()
-        for s, nurses in nurse__shift.items():
-            for pos, n1 in enumerate(nurses):
-                for n2 in nurses[pos + 1 :]:
-                    share_shift[n1, n2] = share_shift.get((n1, n2), 0) + 1
+        self.generate_check_report(my_experim_solved, things_to_look)
 
-    def test_build_graph(self):
-        my_experim = self.get_solved_experiment("test01.json")
-        one = gr.get_nodes_ady(my_experim.instance)
-        two = gr.get_nodes_ady_par(my_experim.instance, num_workers=4)
-        self.assertDictEqual(one, two)
+    def generate_check_report(
+        self, my_experim, things_to_look, verbose=False, delete_file=True
+    ):
 
-    def test_build_graph_par(self):
-        my_experim = self.get_test_experiment("i15.json")
-        nodes_ady = gr.get_nodes_ady_par(my_experim.instance, num_workers=8)
-        # my_graph = GraphTool(instance=my_experim.instance, nodes_ady=nodes_ady)
-        gr.nodes_per_patient(nodes_ady, my_experim.instance)
+        report_path = my_experim.generate_report()
+        # check the file is created.
+        self.assertTrue(os.path.exists(report_path))
 
-    def test_many_graphs(self):
-        # my_experim = self.get_test_experiment("i01.json")
-        my_experim = Experiment(self.instance)
-        nodes_ady = gr.get_nodes_ady_par(my_experim.instance, num_workers=8)
-        my_graph = GraphTool(instance=my_experim.instance, nodes_ady=nodes_ady)
-        patients = my_experim.instance.get_patients_occupants()
-        nodes_per_patient = gr.nodes_per_patient(nodes_ady, my_experim.instance)
-        source = get_source_node(my_experim.instance)
-        for some_patient in patients:
-            print(some_patient)
-            my_nodes = nodes_per_patient[some_patient]
-            one_graph = my_graph.patient_graphs[some_patient]
-            one_graph_nodes = set([my_graph.refs_inv[v] for v in one_graph.vertices()])
-            one_graph_nodes -= {my_graph.sink}
-            self.assertEqual(set(my_nodes), one_graph_nodes)
-            edges = {(n1, n2) for n1, n2_list in my_nodes.items() for n2 in n2_list}
-            one_graph_edges = set(
-                (my_graph.refs_inv[n1], my_graph.refs_inv[n2])
-                for n1, n2 in one_graph.iter_edges()
-            )
-            self.assertEqual(edges, one_graph_edges)
+        parser = HTMLCheckTags(things_to_look, verbose)
+        with open(report_path, "r") as f:
+            content = f.read()
 
-    def test_time_nodes_per_patient(self):
-        my_experim = self.get_test_experiment("i19.json")
-        # my_experim = self.get_test_experiment("i01.json")
-        # my_experim = self.get_test_experiment("i15.json")
-        nodes_ady = gr.get_nodes_ady_par(my_experim.instance, num_workers=8)
-        nodes_per_patient = gr.nodes_per_patient(nodes_ady, my_experim.instance)
-        my_graph = GraphTool(
-            instance=my_experim.instance,
-            nodes_ady=nodes_ady,
-            nodes_ady_p=nodes_per_patient,
-        )
-        # import multiprocessing as multi
-        #
-        # results = {}
-        # my_graphs = {}
-        # with multi.Pool(processes=8) as pool:
-        #     for p, nodes_ady in nodes_per_patient.items():
-        #         results[p] = pool.apply_async(
-        #             GraphTool, [my_experim.instance, nodes_ady, False]
-        #         )
-        #     for p, a in results.items():
-        #         my_graphs[p] = a.get()
-        # my_graphs = {
-        #     p: GraphTool(
-        #         instance=my_experim.instance, nodes_ady=nodes_ady, patient_graphs=False
-        #     )
-        #     for p, nodes_ady in nodes_per_patient.items()
-        # }
+        if delete_file:
+            try:
+                os.remove(report_path)
+            except FileNotFoundError:
+                pass
+        self.assertRaises(StopIteration, parser.feed, content)
 
-    def test_create_patient_graph(self):
 
-        time_init = time.time()
-        # my_experim = Experiment(self.instance, self.solution)
-        # my_experim = self.get_solved_experiment("test01.json")
-        # my_experim = self.get_solved_experiment("test05.json")
-        my_experim = self.get_test_experiment("i15.json")
-        # my_experim = self.get_test_experiment("i19.json")
-        my_experim = solvers["graph"](my_experim.instance, my_experim.solution)
-        my_experim.solve(dict(msg=True, timeLimit=60))
 
+class HTMLCheckTags(HTMLParser):
+    things_to_check: Optional[Dict[str, List[Tuple[str, str]]]]
+
+    def __init__(self, things_to_check: Dict[str, List[Tuple[str, str]]], verbose):
+        HTMLParser.__init__(self)
+        self.verbose = verbose
+        if things_to_check is None:
+            self.things_to_check = None
+        else:
+            self.things_to_check = SuperDict(things_to_check).copy_deep()
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, str]]):
+        # when things_to_check is None, we traverse everything
+        # when verbose=True, we print what we traverse
+        if self.verbose:
+            print("Start tag:", tag)
+        if self.things_to_check is not None and tag not in self.things_to_check:
+            return
+        for attr in attrs:
+            if self.verbose:
+                print("     attr:", attr)
+            # is we're not looking for keys, we just continue
+            if self.things_to_check is None:
+                continue
+            try:
+                # we find the element in the list and remove it
+                index = self.things_to_check[tag].index(attr)
+                self.things_to_check[tag].pop(index)
+            except ValueError:
+                continue
+            # if the list is empty, we take out the key
+            if not len(self.things_to_check[tag]):
+                self.things_to_check.pop(tag)
+                # if we have nothing else to check,
+                # we stop searching
+                if not (self.things_to_check):
+                    raise StopIteration
 
 if __name__ == "__main__":
     unittest.main()
