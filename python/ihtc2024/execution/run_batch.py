@@ -97,6 +97,18 @@ def solve_zip(
         # even if it's not feasible
         if algo.solution is not None:
             algo.solution.to_json(os.path.join(experiment_dir, "output.json"))
+        # if report active, try to run it.
+        report = options.get("report")
+        if report:
+            try:
+                dest_path = os.path.join(experiment_dir, "report.html")
+                report_path = algo.generate_report(report['name'])
+                shutil.move(report_path, dest_path)
+            except Exception as e:
+                with open(os.path.join(experiment_dir, "error.txt"), "w") as f:
+                    f.write("Report failed")
+                    f.write(str(e))
+                    f.write(traceback.format_exc())
 
 
 def solve_scenarios_and_zip(
@@ -204,19 +216,23 @@ def rename_files():
 
 
 if __name__ == "__main__":
-    # my_benchmark(solver_name="cpsat", timeLimit=60 * 20)
+    my_benchmark(solver_name="cpsat", timeLimit=60 * 20, scenarios=["ihtc2024_test_dataset"], threads=8, report=dict(name='report'))
+    my_benchmark(solver_name="graph", timeLimit=60 * 20, scenarios=["ihtc2024_test_dataset"], threads=8, report=dict(name='report'))
+    my_benchmark(solver_name="graph_tw", timeLimit=60 * 20, scenarios=["ihtc2024_test_dataset"], threads=8, report=dict(name='report'))
     # my_benchmark(solver_name="timefold_py", timeLimit=60 * 20, scenarios="competition")
     # my_benchmark(solver_name="cpsat", timeLimit=60 * 20, scenarios="competition")
     # my_benchmark(solver_name="graph", timeLimit=60 * 20, scenarios="competition")
-    my_benchmark(
-        solver_name="graph",
-        timeLimit=60 * 20,
-        # scenarios=["ihtc2024_test_dataset"],
-        scenarios=["ihtc2024_competition_instances"],
-        # scenarios=["ihtc2024_test_dataset", "ihtc2024_competition_instances"],
-        # instances=[f"i{str(i).rjust(2, '0')}.json" for i in range(17, 31)],
-        # instances=["i17.json"],
-        seed=351956,
-        maxSample=[7, 10, None],
-        threads=8,
-    )
+    # my_benchmark(
+    #     solver_name="graph",
+    #     timeLimit=60 * 20,
+    #     scenarios=["ihtc2024_test_dataset"],
+    #     # scenarios=["ihtc2024_competition_instances"],
+    #     # scenarios=["ihtc2024_test_dataset", "ihtc2024_competition_instances"],
+    #     # instances=["i17.json"],
+    #     # instances=["test01.json"],
+    #     # instances=["i16.json"],
+    #     seed=351956,
+    #     maxSample=[7, 10, None],
+    #     threads=8,
+    #     report=dict(name='report')
+    # )

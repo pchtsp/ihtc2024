@@ -81,6 +81,12 @@ class Experiment(ExperimentCore):
         with open(path, "r") as f:
             data_json = json.load(f)
         return cls.from_dict(data_json)
+    
+    @classmethod
+    def from_ihtc_dir(cls, path: str, instance_name:str, solution_name:str) -> "Experiment":
+        instance = Instance.from_ihtc_json(os.path.join(path, instance_name))
+        solution = Solution.from_ihtc_json(os.path.join(path, solution_name))
+        return cls(instance, solution)
 
     @classmethod
     def from_excel(cls, path: str):
@@ -160,7 +166,7 @@ class Experiment(ExperimentCore):
             capacity_overuse=capacity_overuse,
         )
 
-    def check_solution(self, **params) -> SuperDict:
+    def check_solution(self, **params) -> SuperDict[str, SuperDict]:
 
         checks = self.calculate_coupling_checks()
         patients = self.instance.get_patients_occupants()
@@ -189,7 +195,8 @@ class Experiment(ExperimentCore):
         p_days = self.instance.get_patient_occupants_available_starts()
         admission_err = p_assignment.vfilter(
             lambda v: not patients[v["id"]]["is_occupant"]
-        ).vfilter(lambda v: v["admission_day"] not in p_days[v["id"]])
+        ).get_property("admission_day").kvfilter(lambda k, v: v not in p_days[k]
+        ).kvapply(lambda k, v: (v, p_days[k][0], p_days[k][-1]))
 
         return SuperDict(
             h1=gender_err,
@@ -228,7 +235,6 @@ class Experiment(ExperimentCore):
             patient_solution_details.values_tl()
             .to_dict("nurse", indices="id")
             .vapply(set)
-            .vapply(len)
         )
 
         # S4
@@ -273,7 +279,9 @@ class Experiment(ExperimentCore):
 
         # unscheduled patients [S8]:
         unscheduled_patients = (
-            patients.keys_tl()
+            patients
+            .vfilter(lambda v: not v.get('mandatory', True))
+            .keys_tl()
             .set_diff(patient_assignment.keys())
             .to_dict(None)
             .vapply(lambda v: 1)
@@ -301,7 +309,7 @@ class Experiment(ExperimentCore):
                 .vfilter(lambda v: v > 0)
             ),
             room_nurse_skill=terms["room_nurse_skill"],
-            continuity_of_care=terms["continuity_of_care"],
+            continuity_of_care=terms["continuity_of_care"].vapply(len),
             nurse_eccessive_workload=(
                 terms["nurse_eccessive_workload"]
                 .vapply(lambda v: max(v, 0))
@@ -510,3 +518,12 @@ class Experiment(ExperimentCore):
             _log.handlers.append(custom_handler)
 
         _log.setLevel(level)
+
+    def generate_report(self, report_name="report") -> str:
+
+        if not os.path.isabs(report_name):
+            report_name = os.path.join(
+                os.path.dirname(__file__), "../report/", report_name
+            )
+
+        return self.generate_report_quarto(quarto, report_name=report_name)
