@@ -31,6 +31,11 @@ class TestInstance(BaseTestInstance):
                 for n2 in nurses[pos + 1 :]:
                     share_shift[n1, n2] = share_shift.get((n1, n2), 0) + 1
 
+    def test_group_nurses2(self):
+        nurse_shifts = self.instance.get_nurse_shift()
+        groups = self.instance.get_nurse_groups(nurse_shifts, 0.1)
+        print(groups)
+
     def test_build_graph(self):
         my_experim = self.get_solved_experiment("test01.json")
         one = gr.get_nodes_ady(my_experim.instance)

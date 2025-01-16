@@ -6,7 +6,7 @@ from pytups import SuperDict, TupList
 from typing import List, Tuple, Dict
 from pandas import read_excel
 from .tools import generic_from_dict, generic_to_dict, flat_list
-
+from ortools.sat.python import cp_model
 
 # we define primary keys for each sheet:
 # format: table => column
@@ -420,3 +420,39 @@ class Instance(InstanceCore):
         occupants_rooms = occupants.get_property("room_id").vapply(lambda v: [v])
         available_rooms__p = SuperDict(**available_rooms__p, **occupants_rooms)
         return available_rooms__p.vapply(TupList)
+
+    def get_nurse_groups(self, nurse_shifts, weight):
+        nurse__shift = (
+            nurse_shifts.keys_tl()
+            .to_dict(result_col=0)
+            .vapply(sorted, key=lambda x: int(x[1:]))
+        )
+
+        all_nurses = nurse_shifts.keys_tl().take(0).unique()
+        share_shift = SuperDict()
+        for s, nurses in nurse__shift.items():
+            for pos, n1 in enumerate(nurses):
+                for n2 in nurses[pos + 1:]:
+                    share_shift[n1, n2] = share_shift.get((n1, n2), 0) + 1
+
+        model = cp_model.CpModel()
+        max_colors = len(all_nurses)
+        color = {
+                nurse: model.NewIntVar(0, max_colors, "color_{}".format(nurse))
+                for nurse in all_nurses
+            }
+        color = SuperDict(color)
+        violate_link = {(n1, n2): model.NewBoolVar(f"violate_{n1}_{n2}") for n1, n2 in share_shift}
+        violate_link = SuperDict(violate_link)
+        for n1, n2 in share_shift:
+            model.Add(color[n1] != color[n2]).OnlyEnforceIf(violate_link[n1, n2].Not())
+        obj_var = model.NewIntVar(0, max_colors, "total_colors")
+        model.AddMaxEquality(obj_var, color.values())
+        model.Minimize(obj_var + cp_model.LinearExpr.Sum((violate_link * share_shift).values())*weight)
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds =10
+        termination_condition = solver.Solve(model)
+        color_sol = color.vapply(solver.Value)
+        violate_link.vapply(solver.Value)
+        solver.Value(obj_var)
+        return color_sol
