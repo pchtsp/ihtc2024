@@ -3,11 +3,12 @@ from ..core import Experiment
 from .naive import NAIVE
 from .cp_sat import CpSAT
 from .graph import Graph
+from .graph_tw import GraphTW
 
 # TODO: timefold imports jpype and it breaks the multiprocessing of python
 # from .timefold import TimefoldPy
 
-solvers = dict(naive=NAIVE, cpsat=CpSAT, graph=Graph)
+solvers = dict(naive=NAIVE, cpsat=CpSAT, graph=Graph, graph_tw=GraphTW)
 
 
 def get_solver(name: str = "milp_solver") -> Union[Type[Experiment], None]:

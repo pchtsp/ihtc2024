@@ -1,5 +1,5 @@
 # installing graph-tool and adding it to venv:
-# https://git.skewed.de/count0/graph-tool/wikis/installation-instructions
+# https://graph-tool.skewed.de/installation.html#debian-ubuntu-gnulinux
 # https://jolo.xyz/blog/2018/12/07/installing-graph-tool-with-virtualenv
 
 import graph_tool.all as gr
@@ -8,24 +8,53 @@ from pytups import SuperDict
 from .node import get_source_node, get_sink_node, get_theater_occupant, Node, TYPE
 import logging as log
 
-from typing import Dict
+from typing import Dict, Tuple
 import numpy as np
 import ihtc2024.graph.node as nd
+import os
 
 
 class GraphTool(object):
     refs: Dict[Node, int]
     refs_inv: Dict[int, Node]
     g: gr.Graph
+    patient_graphs: Dict[str, gr.GraphView]
+    shift_vp: gr.VertexPropertyMap
+    pos_shift_vp: gr.VertexPropertyMap
+    type_vp: gr.VertexPropertyMap
+    nurse_vp: gr.VertexPropertyMap
+    theater_vp: gr.VertexPropertyMap
+    room_vp: gr.VertexPropertyMap
+    skill_level_vp: gr.VertexPropertyMap
+    max_load_vp: gr.VertexPropertyMap
+    needs_wl_vp: gr.VertexPropertyMap
+    weights: gr.EdgePropertyMap
+    edges: np.ndarray
+    nodes__n_s: SuperDict[Tuple[str, int], list[int]]
+    nodes__r_s: SuperDict[Tuple[str, int], list[int]]
+    nodes__pos: SuperDict[int, list[int]]
+    _equiv_nurse: Dict[str, int]
+    _equiv_room: Dict[str, int]
+    _equiv_theater: Dict[str, int]
 
-    def __init__(self, instance, nodes_ady: Dict[Node, Node]):
+    def __init__(
+        self,
+        instance,
+        nodes_ady: Dict[Node, list[Node]],
+        patient_graphs=True,
+        nodes_ady_p=None,
+    ):
+        print(f"Process {os.getpid()}, graph starts")
         self.instance = instance
         self.sink = get_sink_node(instance)
         self.g = gr.Graph(directed=True)
         edges = [(key, value) for key, values in nodes_ady.items() for value in values]
         edges_arr = np.array(edges)
-        nodes = list(set(np.concatenate((edges_arr[:, 0], edges_arr[:, 1]))))
+        nodes = list(nodes_ady.keys())
+        nodes.append(self.sink)
         vertices = self.g.add_vertex(len(nodes))
+        # nodes = list(set(np.concatenate((edges_arr[:, 0], edges_arr[:, 1]))))
+        # vertices = self.g.add_vertex(len(nodes))
         self.refs = SuperDict({node: int(v) for node, v in zip(nodes, vertices)})
         self.refs_inv = self.refs.reverse()
 
@@ -38,13 +67,10 @@ class GraphTool(object):
         distances = self.shortest_path(node1=self.sink)
         max_dist = instance.get_horizon_size_shifts() + 5
 
-        remove = self.g.new_vp("bool", val=True)
-        remove.a[distances.get_array() > max_dist] = False
-        # nodes_to_remove = [v for v in self.g.vertices() if remove[v]]
-        # nodes_to_remove = [n for n in self.g.vertices() if distances[n] > max_dist]
+        keep = self.g.new_vp("bool", val=True)
+        keep.a[distances.get_array() > max_dist] = False
         self.g.set_reversed(is_reversed=False)
-        self.g = gr.GraphView(self.g, vfilt=remove)
-        # self.g.remove_vertex(nodes_to_remove, fast=True)
+        self.g = gr.GraphView(self.g, vfilt=keep)
         self.g.shrink_to_fit()
         self.g.reindex_edges()
 
@@ -111,14 +137,58 @@ class GraphTool(object):
         # for each patient_occupant, we create a view of the graph
         # that filters the nodes and edges that are not feasible
         # for that patient_occupant
-        log.info("Start creating patient views")
-        self.patient_graphs = self.instance.get_patients_occupants().vapply(
-            self.patient_view
-        )
-        log.info("Finish creating patient views")
+        patients = self.instance.get_patients_occupants()
+        if patient_graphs:
+            self.patient_graphs = {}
+            print("Start creating patient views")
+            log.info("Start creating patient views")
+            # I create a cache of edges that should be filtered out
+            # for each length of stay
+            # this is particularly important for instances with a lot of patients
+            edge_mask_out__length = (
+                patients.get_property("length_of_stay")
+                .values_tl()
+                .unique()
+                .to_dict(None)
+            )
+            sink = self.get_sink_node()
+            shift_arr: np.ndarray = self.shift_vp.get_array()
+            shift_pos_arr: np.ndarray = self.pos_shift_vp.get_array()
+
+            edges_all = self.edges
+            targets = edges_all[:, 1]
+            sources = edges_all[:, 0]
+            edges_to_sink = targets == sink
+            # also, length_of_day determines the number of shifts
+            # a patient can only go to the sink from the last shift
+
+            last_horizon_shift = self.instance.get_last_shift_horizon()
+            is_not_very_last = shift_arr != last_horizon_shift
+            for num in edge_mask_out__length:
+                # we filter out edges that:
+                # - go to the sink from a node that is not the last shift
+                last_shift = num * 3 - 1
+                not_last_shift_or_very_last = (
+                    shift_pos_arr != last_shift
+                ) & is_not_very_last
+
+                filter_edge_out = not_last_shift_or_very_last[sources] & (edges_to_sink)
+                # edge_mask_out__length[num] = filter_edge_out
+                efilt = self.g.new_ep("bool", val=1)
+                efilt.a[filter_edge_out] = 0
+                edge_mask_out__length[num] = efilt
+
+            for p, patient_info in patients.items():
+                print(f"Patient views: {p}")
+                nodes = [self.refs[n] for n in nodes_ady_p[p]]
+                l_o_s: int = patient_info["length_of_stay"]
+                self.patient_graphs[p] = self.patient_view2(
+                    patient_info, nodes, edge_mask_out__length[l_o_s]
+                )
+            log.info("Finish creating patient views")
         # some cache:
         self.__needs__p__s = self.instance.get_patients_occupants_needs().to_dictdict()
-
+        print(f"Process {os.getpid()}, graph ends")
         return
 
     def shortest_path(self, node1=None, node2=None, **kwargs):
@@ -133,6 +203,24 @@ class GraphTool(object):
         return gr.shortest_distance(
             self.g, source=source, target=target, dag=True, **kwargs
         )
+
+    def patient_view2(self, patient_info, nodes: list, efilt: gr.EdgePropertyMap):
+        #     filter_edge_out: np.array
+        vfilt = self.g.new_vp("bool", val=0)
+        sink = self.get_sink_node()
+        source = self.get_source_node()
+        vfilt.a[nodes] = 1
+        vfilt[sink] = 1
+        # efilt = self.g.new_ep("bool", val=1)
+        # efilt.a[filter_edge_out] = 0
+
+        # if the patient is not mandatory, we keep the edge from source to sink:
+        if patient_info.get("mandatory", True):
+            efilt[source, sink] = 0
+        else:
+            efilt[source, sink] = 1
+
+        return gr.GraphView(self.g, vfilt=vfilt, efilt=efilt)
 
     def patient_view(self, patient_info):
         vfilt = self.g.new_vp("bool", val=0)
@@ -168,7 +256,10 @@ class GraphTool(object):
             # we only permit their room
             room_id = self.instance.get_occupants()[patient_info["id"]]["room_id"]
             my_room = self._equiv_room[room_id]
-            vfilt.a[(room_arr != my_room) & (type_arr == TYPE.ROOM)] = 0
+            vfilt.a[
+                (room_arr != my_room)
+                & ((type_arr == TYPE.ROOM) | (type_arr == TYPE.NURSE))
+            ] = 0
         else:
             # we take out the ban rooms for the patient
             ban_rooms = (
@@ -445,6 +536,8 @@ class GraphTool(object):
         )
         new_patient_penalty = np.zeros_like(proposed_skill_level)
         for pos, required in shift_sl_needs.items():
+            if pos not in self.nodes__pos:
+                continue
             relevant_nodes = self.nodes__pos[pos]
             new_patient_penalty[relevant_nodes] = (
                 required - proposed_skill_level[relevant_nodes]
@@ -509,6 +602,8 @@ class GraphTool(object):
             .vfilter(lambda v: v > 0)
         )
         for pos, load in shift_wl_needs.items():
+            if pos not in self.nodes__pos:
+                continue
             relevant_nodes = self.nodes__pos[pos]
             change_load_n2[relevant_nodes] += load
 
@@ -698,7 +793,7 @@ class GraphTool(object):
         nt.plot(network=(nodes, edges), **visual_style, filename=filename)
 
 
-def find_vertex(graph, refs, node):
+def find_vertex(graph, refs, node) -> gr.Vertex:
     return graph.vertex(refs[node])
 
 
