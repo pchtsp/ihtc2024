@@ -18,8 +18,7 @@ execute:
 ```{python}
 #| tags: [parameters]
 
-# file_name = "../tests/data/"
-file_name = '/home/pchtsp/Documents/projects/ihtc2024/python/ihtc2024/tests/data'
+file_name = "../tests/data/"
 
 ```
 
@@ -38,7 +37,7 @@ import pandas as pd
 import plotnine as pl
 import re
 from functools import reduce
-
+pl.options.limitsize=False
 
 ```
 
@@ -174,10 +173,14 @@ For each room, the calendar of nurses assigned for each shift and day.
 
 nurse_df = nurse_assignments.values_tl().to_df()
 
+my_number = len(nurse_df.room.unique())
+height = max(4.8, 20/14*my_number)
+pl.options.figure_size = (6.4, height)
+
 (
   pl.ggplot(nurse_df, pl.aes(x='day', y='shift', fill='id')) + 
   pl.geom_tile() + 
-  pl.theme_minimal() + pl.facet_wrap('room', ncol=1) + pl.geom_text(pl.aes(label='id')) + pl.theme(legend_position='bottom') + pl.labs(fill='Nurse')
+  pl.theme_minimal() + pl.facet_wrap('room', ncol=1) + pl.geom_text(pl.aes(label='id')) + pl.theme(legend_position='top') + pl.labs(fill='Nurse')
 )
 ```
 
@@ -198,6 +201,10 @@ my_assignments_df = my_assignments.values_tl().to_df()
 my_assignments_df['end'] = my_assignments_df.admission_day + my_assignments_df.length_of_stay
 my_assignments_df['lab_pos'] = my_assignments_df.admission_day + my_assignments_df.length_of_stay/2
 
+my_number = len(my_assignments_df.room.unique())
+height = max(4.8, 35/14*my_number)
+pl.options.figure_size = (6.4, height)
+
 my_rooms = my_assignments.get_property("room").values_tl().unique2()
 xintercepts = [1.5 + i for i in range(len(my_rooms)-1)]
 (
@@ -208,7 +215,7 @@ xintercepts = [1.5 + i for i in range(len(my_rooms)-1)]
   + pl.geom_label(pl.aes(y='lab_pos', label='id', x='room'), position = pl.position_dodge2(1)) 
   + pl.geom_vline(xintercept=xintercepts, colour="black")
   + pl.ylab("day") + pl.xlab("room")
-  + pl.theme(legend_position='bottom')
+  + pl.theme(legend_position='top')
 )
 ```
 
@@ -224,6 +231,8 @@ Maximum one gender of patients in a given room-day.
 
 col_rename = dict(enumerate(['room', 'day', 'value']))
 mixed_gender = checks['h1'].vapply(lambda v: 'red').to_tuplist().to_df().rename(columns=col_rename)
+
+pl.options.figure_size = (6.4, 4.8)
 
 plot = pl.ggplot(mixed_gender, pl.aes(x='day', y='room')) + pl.geom_tile(fill='#c00000') + pl.theme_minimal() + pl.scale_x_continuous(limits=[0, horizon[-1]+1])
 if not mixed_gender.empty:
@@ -278,6 +287,8 @@ max_time = surgeon_capacity.get_property("max_surgery_time")
 surgeon_overtime_df = coupling_checks['surgeon_overtime'].kvapply(lambda k, v: (v+max_time[k], max(v, 0), max(-v, 0))).to_tuplist().to_df().rename(columns=col_rename)
 surgeon_overtime_df.used = surgeon_overtime_df.used - surgeon_overtime_df.excess
 
+pl.options.figure_size = (6.4, 4.8)
+
 surgeon_overtime_df = pd.melt(surgeon_overtime_df, id_vars=['surgeon', 'day'], value_vars=['used', 'excess', 'remaining'])
 
 plot = pl.ggplot(surgeon_overtime_df, pl.aes(x='day', y='value', fill='variable')) + pl.geom_col() + pl.facet_wrap('surgeon', scales='free') + pl.ylab("Workload") + pl.theme_minimal() + pl.labs(fill='type')
@@ -292,6 +303,8 @@ We cannot schedule a patient outside of its valid range (release -> due date).
 ```{python}
 col_rename = dict(enumerate(['patient', 'admission', 'start', 'end']))
 late_admission_df = checks['h6'].to_tuplist().to_df().rename(columns=col_rename)
+
+pl.options.figure_size = (6.4, 4.8)
 
 if not late_admission_df.empty:
   late_admission_df.start = late_admission_df.start - 0.05
@@ -324,7 +337,11 @@ room_mixed_age = obj_terms_raw['room_mixed_age'].to_tuplist().to_df().rename(col
 
 room_mixed_age = pd.melt(room_mixed_age, id_vars=['room', 'day'], value_vars=['age_min', 'age_max'])
 
-plot = pl.ggplot(room_mixed_age, pl.aes(x='day', y='value', color='variable')) + pl.geom_step(size=3) + pl.facet_wrap('room', ncol=1) + pl.theme_minimal()
+my_number = len(room_mixed_age.room.unique())
+height = max(4.8, 4.8/15*my_number)
+pl.options.figure_size = (6.4, height)
+
+plot = pl.ggplot(room_mixed_age, pl.aes(x='day', y='value', color='variable')) + pl.geom_step(size=3) + pl.facet_wrap('room', ncol=3) + pl.theme_minimal()
 if not room_mixed_age.empty:
   display(plot)
 
@@ -362,6 +379,10 @@ delays = obj_terms_raw['patient_delay']
 col_rename = dict(enumerate(['patient', 'start', 'end']))
 delays_df = delays.kvapply(lambda k, v: (first_start[k], first_start[k] + v)).to_tuplist().to_df().rename(columns=col_rename)
 
+my_number = len(delays_df.patient.unique())
+height = max(4.8, 4.8/40*my_number)
+pl.options.figure_size = (6.4, height)
+
 plot = pl.ggplot(delays_df, pl.aes(x='start', xend='end', y='patient', yend='patient')) + pl.geom_segment(size=3, color='red') + pl.theme_minimal()
 if not delays_df.empty:
   display(plot)
@@ -377,7 +398,12 @@ if not delays_df.empty:
 col_rename = dict(enumerate(['theater', 'day', 'value']))
 open_theaters = obj_terms_raw['open_operating_theater'].vapply(lambda v: 'blue').to_tuplist().to_df().rename(columns=col_rename)
 
+my_number = len(open_theaters.theater.unique())
+height = max(2, 4.8/10*my_number)
+pl.options.figure_size = (6.4, height)
+
 plot = pl.ggplot(open_theaters, pl.aes(x='day', y='theater')) + pl.geom_tile(fill='#92d050') + pl.theme_minimal() + pl.scale_x_continuous(limits=[0, horizon[-1]]) + pl.scale_y_discrete(limits=theaters.keys_tl())
+
 if not open_theaters.empty:
   display(plot)
 
@@ -395,7 +421,11 @@ transfer_df['value'] = 1
 
 limit_y = max(max(obj_terms_raw['surgeon_transfer'].vapply(len).values()), 5)
 
-plot = pl.ggplot(transfer_df, pl.aes(x='day', y='value', fill='theater')) + pl.geom_col() + pl.theme_minimal() + pl.scale_y_continuous(limits=[0, limit_y]) + pl.ylab("Theaters") + pl.facet_wrap('surgeon', ncol=1)
+my_number = len(transfer_df.surgeon.unique())
+height = max(2, 4.8/4*my_number)
+pl.options.figure_size = (6.4, height)
+
+plot = pl.ggplot(transfer_df, pl.aes(x='day', y='value', fill='theater')) + pl.geom_col() + pl.theme_minimal() + pl.scale_y_continuous(limits=[0, limit_y]) + pl.ylab("Theaters") + pl.facet_wrap('surgeon', ncol=2)
 if not transfer_df.empty:
   display(plot)
 ```
@@ -414,9 +444,14 @@ shift_day = nurse_shifts.get_property('day')
 nurse_wload_df = obj_terms_raw['nurse_eccessive_workload'].kvapply(lambda k, v: (shift_day[k], max_load[k]+v,  max(v, 0), max(-v, 0))).to_tuplist().to_df().rename(columns=col_rename)
 nurse_wload_df.used = nurse_wload_df.used - nurse_wload_df.excess
 
+len_nurses = len(nurse_wload_df.nurse.unique())
+height = max(4.8, 10/30*len_nurses)
+pl.options.figure_size = (6.4, height)
+
 nurse_wload_df= pd.melt(nurse_wload_df, id_vars=['nurse', 'shift', 'day'], value_vars=['used', 'excess', 'remaining'])
 
-plot = pl.ggplot(nurse_wload_df, pl.aes(x='day', y='value', fill='variable')) + pl.geom_col() + pl.facet_wrap('nurse', scales='free', ncol=3) + pl.ylab("Workload") + pl.theme_minimal() + pl.labs(fill='type')
+plot = pl.ggplot(nurse_wload_df, pl.aes(x='day', y='value', fill='variable')) + pl.geom_col() + pl.facet_wrap('nurse', scales='free', ncol=3) + pl.ylab("Workload") + pl.theme_minimal() + pl.labs(fill='type') + pl.theme(legend_position='top')
+
 if not nurse_wload_df.empty:
   display(plot)
 ```
@@ -433,7 +468,10 @@ col_rename = dict(enumerate(['patient', 'nurse']))
 patient_nurses = obj_terms_raw['continuity_of_care'].vapply(list).to_tuplist().to_df().rename(columns=col_rename)
 patient_nurses['value'] = 1
 
-plot = pl.ggplot(patient_nurses, pl.aes(x='patient', y='value', fill='nurse')) + pl.geom_col() + pl.theme_minimal() + pl.ylab("Number of nurses")
+pl.options.figure_size = (6.4, 4.8)
+
+plot = pl.ggplot(patient_nurses, pl.aes(x='patient', y='value', fill='nurse')) + pl.geom_col() + pl.theme_minimal() + pl.ylab("Number of nurses") + pl.theme(legend_position='top')
+
 if not patient_nurses.empty:
   display(plot)
 ```
@@ -454,7 +492,22 @@ obtained_df = deficit_df[['patient', 'shift', 'obtained']]
 deficit_df['used'] = deficit_df.required - deficit_df.deficit
 deficit_df = pd.melt(deficit_df, id_vars=['patient', 'shift'], value_vars=['used', 'deficit'])
 
-plot = pl.ggplot(deficit_df, pl.aes(x='shift', y='value')) + pl.geom_col(pl.aes(fill='variable')) + pl.theme_minimal() + pl.facet_wrap('patient', scales='free') + pl.ylab("Nurse skill level") + pl.geom_step(obtained_df, pl.aes(y='obtained'), linetype="dashed", color='grey', position = pl.position_nudge(x = -0.5)) + pl.scale_fill_manual(values=dict(deficit='#ff0000', used='#92d050'))
+len_patients = len(deficit_df.patient.unique())
+height = max(4.8, 40/127*len_patients)
+pl.options.figure_size = (6.4, height)
+
+plot = ( 
+pl.ggplot(deficit_df, pl.aes(x='shift', y='value'))
+ + pl.geom_col(pl.aes(fill='variable')) 
+ + pl.theme_minimal() 
+ + pl.facet_wrap('patient', scales='free', ncol=3) 
+ + pl.ylab("Nurse skill level") 
+ + pl.geom_step(obtained_df, pl.aes(y='obtained'), linetype="dashed", color='grey', position = pl.position_nudge(x = -0.5)) 
+ + pl.scale_fill_manual(values=dict(deficit='#ff0000', used='#92d050'))
+ + pl.theme(legend_position='top')
+)
+
 if not deficit_df.empty:
   display(plot)
+
 ```
