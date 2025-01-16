@@ -1595,21 +1595,6 @@
       ]
     },
     {
-      "id": "n11",
-      "assignments": [
-        {
-          "day": 4,
-          "shift": "late",
-          "rooms": []
-        },
-        {
-          "day": 7,
-          "shift": "early",
-          "rooms": []
-        }
-      ]
-    },
-    {
       "id": "n12",
       "assignments": [
         {
