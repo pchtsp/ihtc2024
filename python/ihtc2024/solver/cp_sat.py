@@ -8,6 +8,7 @@ from ..core.tools import print_time
 import time
 from contextlib import contextmanager
 from collections import deque
+import json
 
 from pytups import SuperDict, TupList
 
@@ -53,8 +54,8 @@ class CpSAT(Experiment):
         admission_bin = my_vars["admission_bin"]
         room_binary = my_vars["room_binary"]
         theater_bin = my_vars["theater_bin"]
-        nurse_r_s = my_vars.get("nurse_r_s")
-        nurse_patient__n_p_s = my_vars.get("nurse_patient__n_p_s")
+
+        nurse_bin__n_r_s = my_vars.get("nurse_bin__n_r_s")
         model.ClearHints()
         for v in patient_assignments.values():
             p = v["id"]
@@ -65,20 +66,13 @@ class CpSAT(Experiment):
             model.AddHint(room_binary[p, r], 1)
             model.AddHint(theater_bin[p, t], 1)
 
-        if nurse_r_s:
+        if nurse_bin__n_r_s:
             nurse_assignments = self.get_nurse_assignment_shift()
             for v in nurse_assignments.values():
                 r = rooms[v["room"]]["pos"]
                 n = nurses[v["id"]]["pos"]
                 s = v["shift_pos"]
-                model.AddHint(nurse_r_s[r, s], n)
-        if nurse_patient__n_p_s:
-            patient_details = self.get_patient_shift_details()
-            for v in patient_details.values():
-                n = nurses[v["nurse"]]["pos"]
-                p = v["id"]
-                s = v["shift"]
-                model.AddHint(nurse_patient__n_p_s[n, p, s], 1)
+                model.AddHint(nurse_bin__n_r_s[n, r, s], 1)
 
     def get_objective_function(self, model, my_vars):
 
@@ -157,7 +151,8 @@ class CpSAT(Experiment):
 
             model = cp_model.CpModel()
             my_vars = self.add_non_nurse_constraints(model, my_options_1)
-            my_vars = self.add_nurse_constraints(model, my_vars)
+            my_vars = self.add_nurse_constraints2(model, my_vars)
+            # my_vars = self.add_nurse_constraints(model, my_vars)
 
             if VERBOSE:
                 self.print_time("Objective function")
@@ -168,6 +163,9 @@ class CpSAT(Experiment):
             if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
                 # as soon as we find a feasible solution, we exit
                 break
+
+        if options.get("dump_vars"):
+            self.dump_vars_model(model, solver, my_vars)
 
         if options.get("msg", False):
             print(f"Model finished with status {status_conv.get(status)}")
@@ -330,7 +328,6 @@ class CpSAT(Experiment):
             .get_property("max_surgery_time")
             .to_dictdict()
         )
-        DUMMY_ROOM_POS = len(rooms)
 
         # admission_binary
         # only patients can be admitted
@@ -357,7 +354,7 @@ class CpSAT(Experiment):
             )
         )
         # occupants start at 0
-        #  we care because we use admission for intervals/stay
+        #  we care because we use admission for intervals
         for o in occupants:
             admission_p[o] = 0
         for p, d in admission_bin:
@@ -392,33 +389,7 @@ class CpSAT(Experiment):
             )
         )
 
-        # stay_binary, if a patient is in a room
         length_of_stay = patients_occupants.get_property("length_of_stay")
-        possible_stay = possible_start.kvapply(
-            lambda k, v: range(v[0], min(v[-1] + length_of_stay[k], horizon_days_size))
-        )
-
-        # possible_stay
-        # occupants have a 1 during their whole stay
-        stay_bin = SuperDict(
-            {
-                (p, d): model.NewBoolVar(f"stay_bin_{p}_{d}") if p in patients else 1
-                for p, days in possible_stay.items()
-                for d in days
-            }
-        )
-
-        # tie stay with admission.
-        # if admission on day d => stay on days d .. d + length
-        # if admission not on d -> do nothing
-        for p, days in possible_start.items():
-            # we only tie with patients, not occupants
-            if p in occupants:
-                continue
-            for d in days:
-                last_date = min(d + length_of_stay[p], horizon_days_size)
-                for d2 in range(d, last_date):
-                    model.AddImplication(admission_bin[p, d], stay_bin[p, d2])
 
         # this will calculate the usage of the theater by patients
         domain__ot_p_d = TupList(
@@ -442,15 +413,6 @@ class CpSAT(Experiment):
                 for ot, p, d in domain__ot_p_d
             }
         )
-        # definition
-        # https://groups.google.com/g/or-tools-discuss/c/9trLOMSe_DA
-        for ot, p, d in domain__ot_p_d:
-            multiple_ands(
-                model,
-                assigned__ot_p_d[ot, p, d],
-                admission_bin[p, d],
-                theater_bin[p, ot],
-            )
 
         # binary if surgeon works in ot in day d
         worked__s_ot_d = SuperDict(
@@ -463,14 +425,6 @@ class CpSAT(Experiment):
                 if ot_cap[ot][d] > 0
             }
         )
-        # definition
-        # if at least one patient of surgen is operated by ot in that day
-        # we count it
-        for ot, p, d in domain__ot_p_d:
-            model.Add(
-                worked__s_ot_d.get((patients[p]["surgeon_id"], ot, d), 0)
-                >= assigned__ot_p_d[ot, p, d]
-            )
 
         # ot is open (S5)
         open__ot_d = SuperDict(
@@ -481,10 +435,33 @@ class CpSAT(Experiment):
                 if ot_cap[ot][d] > 0
             }
         )
-        # definition:
-        # if at least one patient is assigned, we open the ot
+
+        # definition
+        # https://groups.google.com/g/or-tools-discuss/c/9trLOMSe_DA
         for ot, p, d in domain__ot_p_d:
-            model.Add(open__ot_d[ot, d] >= assigned__ot_p_d[ot, p, d])
+            multiple_ands(
+                model,
+                assigned__ot_p_d[ot, p, d],
+                admission_bin[p, d],
+                theater_bin[p, ot],
+            )
+            s = patients[p]["surgeon_id"]
+            # if surgeon cannot work on that day:
+            # we cannot assign the theater to the patient
+            if (s, ot, d) not in worked__s_ot_d:
+                model.Add(admission_bin[p, d] + theater_bin[p, ot] <= 1)
+            else:
+                model.AddBoolOr(
+                    worked__s_ot_d[s, ot, d],
+                    admission_bin[p, d].Not(),
+                    theater_bin[p, ot].Not(),
+                )
+                # the ot is open in day d if a patient is using it in that day
+                model.AddBoolOr(
+                    open__ot_d[ot, d],
+                    admission_bin[p, d].Not(),
+                    theater_bin[p, ot].Not(),
+                )
 
         # if we do not have a domain for ot, p, d:
         # then admission or theater needs to be 0
@@ -498,88 +475,16 @@ class CpSAT(Experiment):
         if VERBOSE:
             self.print_time("H2 constraints")
 
-        # domain__p_r_d = TupList(
-        #     [
-        #         (p, r, d)
-        #         for p, rr in available_rooms__p.items()
-        #         for r in rr
-        #         for d in possible_stay[p]
-        #     ]
-        # )
-        # room__p_r_d = domain__p_r_d.to_dict(None).vapply(
-        #     lambda v: model.NewBoolVar(f"room_{v[0]}_{v[1]}_{v[2]}")
-        # )
-        # # we tie room_p_r_d to room and stay:
-        # for p, r, d in domain__p_r_d:
-        #     multiple_ands(
-        #         model, room__p_r_d[p, r, d], room_binary[p, r], stay_bin[p, d]
-        #     )
-
         # patients that are mandatory will always have a room.
         # occupants are considered mandatory (so default: True)
-        available_rooms__p_with_dummy = available_rooms__p.kvapply(
-            lambda k, v: (
-                v
-                if patients_occupants[k].get("mandatory", True)
-                else v + [DUMMY_ROOM_POS]
-            )
-        )
-        room_p = available_rooms__p_with_dummy.kvapply(
-            lambda k, v: (
-                model.NewIntVarFromDomain(
-                    cp_model.Domain.FromValues(values=v), "room_{}".format(k)
-                )
-                if k in patients
-                else v[0]
-            )
-        )
-
-        # we tie binary and element variables
-        for p, _rooms in available_rooms__p.items():
-            for r in _rooms:
-                model.Add(room_p[p] == r).OnlyEnforceIf(room_binary[p, r])
-                model.Add(room_p[p] != r).OnlyEnforceIf(
-                    negate_var_bool(room_binary[p, r])
-                )
-
         gender = patients_occupants.get_property("gender")
-        # patients_list = patients_occupants.keys_tl()
-        # patients_num = len(patients_list)
-        # possible_stay_s = possible_stay.vapply(set)
 
-        # possible_stays = {
-        #     (p1, patients_list[pos2]): possible_stay_s[p1]
-        #     & possible_stay_s[patients_list[pos2]]
-        #     for pos1, p1 in enumerate(patients_list)
-        #     for pos2 in range(pos1 + 1, patients_num)
-        # }
-        # available_rooms__p_s = available_rooms__p.vapply(set)
-        # possible_rooms = {
-        #     (p1, patients_list[pos2]): available_rooms__p_s[p1]
-        #     & available_rooms__p_s[patients_list[pos2]]
-        #     for pos1, p1 in enumerate(patients_list)
-        #     for pos2 in range(pos1 + 1, patients_num)
-        # }
         if VERBOSE:
             self.print_time("H1 constraints prep1")
 
-        # shared_room_domain__p1_p2_r_d = TupList(
-        #     (p1, p2, room_pos, d)
-        #     for (p1, p2), days in possible_stays.items()
-        #     for room_pos in possible_rooms[p1, p2]
-        #     for d in days
-        # )
         if VERBOSE:
             self.print_time("H1 constraints prep2")
 
-        # two patients share a room on day d?
-        # share_room = SuperDict(
-        #     {
-        #         (p1, p2, r, d): model.NewBoolVar(f"share_{p1}_{p2}_{r}_{d}")
-        #         for p1, p2, r, d in shared_room_domain__p1_p2_r_d
-        #         if gender[p1] == gender[p2]
-        #     }
-        # )
         if VERBOSE:
             self.print_time("H1 constraints actual")
         # we create an interval per patient-room
@@ -591,30 +496,6 @@ class CpSAT(Experiment):
                 is_present=room_binary[p, r],
                 name=f"interval_{p}_{r}",
             )
-
-        # H1
-        # for p1, p2, room_pos, d in shared_room_domain__p1_p2_r_d:
-        #     # if they share the same gender, we need to register if they share a room
-        #     if gender[p1] == gender[p2]:
-        #         multiple_ands(
-        #             model,
-        #             share_room[p1, p2, room_pos, d],
-        #             room__p_r_d[p1, room_pos, d],
-        #             room__p_r_d[p2, room_pos, d],
-        #         )
-        #         # model.Add(share_room[p1, p2, room_pos, d] == 1).OnlyEnforceIf(
-        #         #     room__p_r_d[p1, room_pos, d], room__p_r_d[p2, room_pos, d]
-        #         # )
-        #     else:
-        #         # if they do not share gender they cannot share a room
-        #         model.AddImplication(
-        #             room__p_r_d[p1, room_pos, d],
-        #             negate_var_bool(room__p_r_d[p2, room_pos, d]),
-        #         )
-        #         model.AddImplication(
-        #             room__p_r_d[p2, room_pos, d],
-        #             negate_var_bool(room__p_r_d[p1, room_pos, d]),
-        #         )
 
         # room capacity
         if VERBOSE:
@@ -644,11 +525,6 @@ class CpSAT(Experiment):
                         [1] * len(my_intervals) + [capacity],
                         capacity,
                     )
-
-        # patients__r_d = domain__p_r_d.to_dict(0)
-        # for (room_pos, day), _patients in patients__r_d.items():
-        #     _patients_in_room = [room__p_r_d[p, room_pos, day] for p in _patients]
-        #     model.Add(my_sum(_patients_in_room) <= room_capacity[room_pos])
 
         # S1
         if VERBOSE:
@@ -684,14 +560,22 @@ class CpSAT(Experiment):
         age_group = patients_occupants.get_property("age_group").vapply(
             lambda v: agegroups[v]["pos"]
         )
-        for p, r in room_binary:
-            for d in possible_stay[p]:
-                model.Add(max_age[r, d] >= age_group[p]).OnlyEnforceIf(
-                    stay_bin[p, d], room_binary[p, r]
-                )
-                model.Add(min_age[r, d] <= age_group[p]).OnlyEnforceIf(
-                    stay_bin[p, d], room_binary[p, r]
-                )
+
+        # if admission on day d and patient in room r => calculate max/min age in days d2
+        p_o_start = SuperDict({(o, 0): 1 for o in occupants})
+        p_o_start.update(admission_bin)
+        rooms_p = room_binary.keys_tl().to_dict(1)
+        for p, d in p_o_start:
+            last_date = min(d + length_of_stay[p], horizon_days_size)
+            for d2 in range(d, last_date):
+                for r in rooms_p[p]:
+                    model.Add(max_age[r, d2] >= age_group[p]).OnlyEnforceIf(
+                        p_o_start[p, d], room_binary[p, r]
+                    )
+                    model.Add(min_age[r, d2] <= age_group[p]).OnlyEnforceIf(
+                        p_o_start[p, d], room_binary[p, r]
+                    )
+
         for r, d in max_age_diff:
             model.Add(max_age_diff[r, d] == max_age[r, d] - min_age[r, d])
 
@@ -741,8 +625,6 @@ class CpSAT(Experiment):
             admission_bin=admission_bin,
             theater_bin=theater_bin,
             room_binary=room_binary,
-            stay_bin=stay_bin,
-            room_p=room_p,
             open__ot_d=open__ot_d,
             worked__s_ot_d=worked__s_ot_d,
             max_age_diff=max_age_diff,
@@ -750,6 +632,159 @@ class CpSAT(Experiment):
 
         return my_vars
 
+    def add_nurse_constraints2(
+        self,
+        model: cp_model.CpModel,
+        my_vars: my_vars_type,
+    ) -> my_vars_type:
+        patients_occupants = self.instance.get_patients_occupants()
+        occupants = patients_occupants.vfilter(lambda v: v["is_occupant"])
+        rooms = self.rooms_id
+        nurses = self.nurses_id
+
+        nurse_shifts = self.instance.get_nurse_shift()
+        needs__p_sPos = self.instance.get_patients_occupants_needs()
+        last_shift = self.instance.get_last_shift_horizon()
+
+        skill_level__p_sPos = needs__p_sPos.get_property("skill_level_required")
+        workload__p_posShift = needs__p_sPos.get_property("workload_produced")
+        positions_p = needs__p_sPos.keys_tl().to_dict(1).vapply(len)
+
+        admission_bin = my_vars["admission_bin"]
+        room_binary = my_vars["room_binary"]
+        rooms__p = room_binary.keys_tl().to_dict(1)
+        MaxWL__p = workload__p_posShift.to_tuplist().to_dict(2, indices=0).vapply(max)
+
+        # TODO: if tw mode, maybe constraint this?
+        nurses__s = (
+            nurse_shifts.values_tl()
+            .copy_deep()
+            .vapply_col("nurse_pos", lambda v: nurses[v["nurse"]]["pos"])
+            .to_dict("nurse_pos", indices="shift_pos")
+        )
+        nurse_max_load__n_s = (
+            nurse_shifts.values_tl()
+            .copy_deep()
+            .vapply_col("nurse_pos", lambda v: nurses[v["nurse"]]["pos"])
+            .to_dict("max_load", indices=["nurse_pos", "shift_pos"], is_list=False)
+        )
+        domain__n_r_s = TupList(
+            (n, r["pos"], shift)
+            for r in rooms.values()
+            for shift, _nurses in nurses__s.items()
+            for n in _nurses
+        )
+        n__r_s = domain__n_r_s.to_dict(0)
+        # admission_bin doesn't include occupants.
+        # I correct it here to add them:
+        p_o_start = SuperDict({(o, 0): 1 for o in occupants})
+        p_o_start.update(admission_bin)
+        possible_start = p_o_start.keys_tl().to_dict(1)
+        possible_stay = self.get_stay_options_from_starts(possible_start)
+        __s = self.instance.get_shifts_of_day
+        domain__p_s = TupList(
+            (p, s) for p, days in possible_stay.items() for d in days for s in __s(d)
+        ).to_dict(None)
+        domain_n_p_s = TupList((n, p, s) for p, s in domain__p_s for n in nurses__s[s])
+        domain_n_p_s__n_s = domain_n_p_s.to_dict(1)
+        domain__n_p = domain_n_p_s.take([0, 1]).unique2()
+
+        nurses_skill_level = nurses.values_tl().to_dict(
+            "skill_level", indices="pos", is_list=False
+        )
+        max_skill_level = max(nurses_skill_level.values())
+
+        nurse_bin__n_r_s = SuperDict(
+            {
+                (n, r, s): model.NewBoolVar(f"nurse_bin_{n}_{r}_{s}")
+                for n, r, s in domain__n_r_s
+            }
+        )
+
+        skill_diff__p_s = domain__p_s.kapply(
+            lambda k: model.NewIntVar(
+                0, max_skill_level, name=f"skill_diff_{k[0]}_{k[1]}"
+            )
+        )
+        nurse_overwork__n_s = domain_n_p_s__n_s.vapply(
+            lambda _patients: sum(MaxWL__p[p] for p in _patients)
+        ).kvapply(lambda k, v: model.NewIntVar(0, v, name=f"overwork_{k[0]}_{k[1]}"))
+
+        patient_nurse_workload__n_p_s = domain_n_p_s.to_dict(None).vapply(
+            lambda v: (
+                model.NewIntVar(
+                    0, MaxWL__p[v[1]], name=f"workload_{v[0]}_{v[1]}_{v[2]}"
+                )
+                if not patients_occupants[v[1]]["is_occupant"]
+                else workload__p_posShift[v[1], v[2]]
+            )
+        )
+        nurse_patient__n_p = SuperDict(
+            {
+                (n, p): model.NewBoolVar(name=f"nurse_patient_{n}_{p}")
+                for n, p in domain__n_p
+            }
+        )
+
+        # if a patient is in a room, then a nurse needs to be assigned.
+
+        # this is a very big constraint/domain
+        __s = lambda day, posShift: day * 3 + posShift
+        patient_day_shift_pos_room = [
+            (p, d, __s(d, pS), pS, r)
+            for p, d in p_o_start
+            for pS in range(positions_p[p])
+            if __s(d, pS) <= last_shift
+            for r in rooms__p[p]
+        ]
+        for p, d, s, _, r in patient_day_shift_pos_room:
+            # if there's a patient in a room in a shift, we need exactly one nurse
+            model.Add(
+                my_sum([nurse_bin__n_r_s[n, r, s] for n in n__r_s.get((r, s), [])]) == 1
+            ).OnlyEnforceIf(p_o_start[p, d], room_binary[p, r])
+
+        patient_day_shift_pos_room_nurse = [
+            (p, d, s, pS, r, n)
+            for p, d, s, pS, r in patient_day_shift_pos_room
+            for n in n__r_s.get((r, s), [])
+        ]
+
+        for p, d, s, pS, r, n in patient_day_shift_pos_room_nurse:
+            # skill difference definition
+            model.Add(
+                skill_diff__p_s[p, s]
+                >= skill_level__p_sPos[p, pS] - nurses_skill_level[n]
+            ).OnlyEnforceIf(
+                p_o_start[p, d], nurse_bin__n_r_s[n, r, s], room_binary[p, r]
+            )
+            model.Add(
+                patient_nurse_workload__n_p_s[n, p, s] == workload__p_posShift[p, pS]
+            ).OnlyEnforceIf(
+                p_o_start[p, d], nurse_bin__n_r_s[n, r, s], room_binary[p, r]
+            )
+            model.AddBoolOr(
+                nurse_patient__n_p[n, p],
+                negate_var_bool(p_o_start[p, d]),
+                negate_var_bool(nurse_bin__n_r_s[n, r, s]),
+                negate_var_bool(room_binary[p, r]),
+            )
+
+        for (n, s), _patients in domain_n_p_s__n_s.items():
+            _all_workload = [patient_nurse_workload__n_p_s[n, p, s] for p in _patients]
+            model.Add(
+                nurse_overwork__n_s[n, s]
+                >= my_sum(_all_workload) - nurse_max_load__n_s[n, s]
+            )
+        more_vars = dict(
+            skill_diff__p_s=skill_diff__p_s,
+            nurse_patient__n_p=nurse_patient__n_p,
+            nurse_overwork__n_s=nurse_overwork__n_s,
+            nurse_bin__n_r_s=nurse_bin__n_r_s,
+        )
+        my_vars.update(more_vars)
+        return my_vars
+
+    # for patient, day in possible_starts.keys():
     def add_nurse_constraints(
         self,
         model: cp_model.CpModel,
@@ -787,6 +822,7 @@ class CpSAT(Experiment):
                 for n, r, s in domain__n_r_s
             }
         )
+
         domain_n_r_s__r_s = domain__n_r_s.to_dict(0)
         for (r, s), _nurses in domain_n_r_s__r_s.items():
             nurse_r_s[r, s] = model.NewIntVarFromDomain(
@@ -1020,8 +1056,7 @@ class CpSAT(Experiment):
             skill_diff__p_s=skill_diff__p_s,
             nurse_patient__n_p=nurse_patient__n_p,
             nurse_overwork__n_s=nurse_overwork__n_s,
-            nurse_r_s=nurse_r_s,
-            nurse_patient__n_p_s=nurse_patient__n_p_s,
+            nurse_bin__n_r_s=nurse_bin__n_r_s,
         )
         my_vars.update(more_vars)
 
@@ -1039,11 +1074,26 @@ class CpSAT(Experiment):
             n["pos"] = pos
         return nurses
 
+    def dump_vars_model(self, model, solver: cp_model.CpSolver, my_vars):
+        try:
+            result = {
+                k: v.vapply(solver.Value).vfilter(lambda v: v)
+                for k, v in my_vars.items()
+            }
+        except:
+            result = {}
+
+        result = SuperDict(result).to_dictdict()
+        with open("my_vars.json", "w") as f:
+            json.dump(result, f)
+        model.ExportToFile("model.txt")
+
     def my_vars_to_solution(self, solver, my_vars) -> dict:
         admission_bin = my_vars["admission_bin"]
         theater_bin = my_vars["theater_bin"]
         room_binary = my_vars["room_binary"]
-        nurse_r_s = my_vars.get("nurse_r_s")
+        nurse_bin__n_r_s = my_vars.get("nurse_bin__n_r_s")
+        # TODO: use binary n_r_s
         rooms_id__pos = self.rooms_id.values_tl().to_dict(
             "id", indices="pos", is_list=False
         )
@@ -1073,23 +1123,43 @@ class CpSAT(Experiment):
         get_shiftday = self.instance.get_shiftype_from_shift
         get_day = self.instance.get_day_from_shift
         sol_nurses = {}
-        if nurse_r_s:
-            sol_nurses = (
-                nurse_r_s.vapply(solver.Value)
-                .to_tuplist()
-                .vapply(
-                    lambda v: SuperDict(
-                        room=rooms_id__pos[v[0]],
-                        day=get_day(v[1]),
-                        shift=get_shiftday(v[1]),
-                        id=nurse_id__pos[v[2]],
-                    )
-                )
+        if nurse_bin__n_r_s:
+            nurse__r_s = transform_to_assignment(
+                solver, nurse_bin__n_r_s, result_col=0, is_list=False
             )
+
+            sol_nurses = nurse__r_s.kvapply(
+                lambda k, v: SuperDict(
+                    room=rooms_id__pos[k[0]],
+                    day=get_day(k[1]),
+                    shift=get_shiftday(k[1]),
+                    id=nurse_id__pos[v],
+                )
+            ).values_tl()
         sol_data = SuperDict(
             nurse_assignment=sol_nurses, patient_assignment=sol_patients
         )
         return sol_data
+
+    def get_stay_options_from_starts(self, possible_start):
+        patients_occupants = self.instance.get_patients_occupants()
+        horizon_days_size = self.instance.get_horizon_size_days()
+        length_of_stay = patients_occupants.get_property("length_of_stay")
+        return (
+            possible_start.vapply(list)
+            .to_tuplist()
+            .to_dict(None)
+            .vapply(
+                lambda v: range(
+                    v[1], min(v[1] + length_of_stay[v[0]], horizon_days_size)
+                )
+            )
+            .vapply(list)
+            .to_tuplist()
+            .to_dict(2, indices=0)
+            .vapply(set)
+            .vapply(list)
+        )
 
 
 class StopOnMovingAverageImprovement(cp_model.CpSolverSolutionCallback):
@@ -1107,7 +1177,7 @@ class StopOnMovingAverageImprovement(cp_model.CpSolverSolutionCallback):
 
     def on_solution_callback(self):
         average_improvement = self.__queue.push(self.WallTime(), self.ObjectiveValue())
-        print(average_improvement, self.__solution_count)
+        # print(average_improvement, self.__solution_count)
         if average_improvement < self.__min_imp:
             self.__solution_count += 1
         else:
@@ -1159,7 +1229,6 @@ def multiple_ands(model: cp_model.CpModel, result, *ands):
     model.AddBoolOr(result, *nots)
     for a in ands:
         # if result is true, then all the ands are true
-        model.AddImplication(result, a)
         model.AddImplication(result, a)
 
 
