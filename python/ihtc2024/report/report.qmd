@@ -38,6 +38,7 @@ import plotnine as pl
 import re
 from functools import reduce
 pl.options.limitsize=False
+pl.options.figure_size = (6.4, 4.8)
 
 ```
 
@@ -64,7 +65,6 @@ my_instance = my_experiment.instance
 # my_experiment.solution.data['patient_assignment']['p5']['admission_day'] = 4
 # my_experiment.solution.data['patient_assignment']['p6']['admission_day'] = 4
 
-# h7=capacity_overuse,
 # h4=ot_overtime,
 
 ```
@@ -301,6 +301,9 @@ if not surgeon_overtime_df.empty:
 We cannot schedule a patient outside of its valid range (release -> due date).
 
 ```{python}
+#| label: fig-patient-admission
+#| fig-cap: "Patients with an incorrect admission date"
+
 col_rename = dict(enumerate(['patient', 'admission', 'start', 'end']))
 late_admission_df = checks['h6'].to_tuplist().to_df().rename(columns=col_rename)
 
@@ -322,6 +325,31 @@ if not late_admission_df.empty:
 
 ```
 
+## Room capacity
+
+The number of patients in each room cannot exceed the capacity of the room.
+
+```{python}
+#| label: fig-room-usage
+#| fig-cap: "Rooms capacity being used by patients"
+
+col_rename = dict(enumerate(['room', 'day', 'used', 'excess', 'remaining']))
+capacities = my_instance.get_rooms().get_property("capacity")
+room_cap_df = coupling_checks['capacity_overuse'].kvapply(lambda k, v: (capacities[k[0]]+v - max(0, v), max(0, v), max(0, -v))).to_tuplist().to_df().rename(columns=col_rename)
+
+room_cap_df = pd.melt(room_cap_df, id_vars=['room', 'day'], value_vars=['used', 'excess', 'remaining'])
+
+my_number = len(room_cap_df.room.unique())
+height = max(2, 4.8/15*my_number)
+pl.options.figure_size = (6.4, height)
+
+plot = pl.ggplot(room_cap_df, pl.aes(x='day', y='value', fill='variable')) + pl.geom_col() + pl.facet_wrap('room', ncol=3) + pl.theme_minimal()
+
+if not room_cap_df.empty:
+  display(plot)
+
+```
+
 ## Soft constraints
 
 ### Mixed age
@@ -338,7 +366,7 @@ room_mixed_age = obj_terms_raw['room_mixed_age'].to_tuplist().to_df().rename(col
 room_mixed_age = pd.melt(room_mixed_age, id_vars=['room', 'day'], value_vars=['age_min', 'age_max'])
 
 my_number = len(room_mixed_age.room.unique())
-height = max(4.8, 4.8/15*my_number)
+height = max(2, 4.8/15*my_number)
 pl.options.figure_size = (6.4, height)
 
 plot = pl.ggplot(room_mixed_age, pl.aes(x='day', y='value', color='variable')) + pl.geom_step(size=3) + pl.facet_wrap('room', ncol=3) + pl.theme_minimal()
@@ -441,8 +469,7 @@ Each nurse should not exceed it shift capacity.
 col_rename = dict(enumerate(['nurse', 'shift', 'day', 'used', 'excess', 'remaining']))
 max_load = nurse_shifts.get_property('max_load')
 shift_day = nurse_shifts.get_property('day')
-nurse_wload_df = obj_terms_raw['nurse_eccessive_workload'].kvapply(lambda k, v: (shift_day[k], max_load[k]+v,  max(v, 0), max(-v, 0))).to_tuplist().to_df().rename(columns=col_rename)
-nurse_wload_df.used = nurse_wload_df.used - nurse_wload_df.excess
+nurse_wload_df = obj_terms_raw['nurse_eccessive_workload'].kvapply(lambda k, v: (shift_day[k], max_load[k]+v-max(v, 0),  max(v, 0), max(-v, 0))).to_tuplist().to_df().rename(columns=col_rename)
 
 len_nurses = len(nurse_wload_df.nurse.unique())
 height = max(4.8, 10/30*len_nurses)

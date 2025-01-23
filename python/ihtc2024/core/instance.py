@@ -7,6 +7,7 @@ from typing import List, Tuple, Dict
 from pandas import read_excel
 from .tools import generic_from_dict, generic_to_dict, flat_list
 from ortools.sat.python import cp_model
+import pulp as pl
 
 # we define primary keys for each sheet:
 # format: table => column
@@ -421,38 +422,126 @@ class Instance(InstanceCore):
         available_rooms__p = SuperDict(**available_rooms__p, **occupants_rooms)
         return available_rooms__p.vapply(TupList)
 
-    def get_nurse_groups(self, nurse_shifts, weight):
+    @staticmethod
+    def solve_color_cpsat(share_shift, consecutive_shift, weight, weight2):
+        model = cp_model.CpModel()
+        all_nurses = (
+            share_shift.keys_tl().take(0).unique()
+            + share_shift.keys_tl().take(1).unique()
+        ).unique()
+        max_colors = round(len(all_nurses) * 0.1)
+        color = {
+            nurse: model.NewIntVar(0, max_colors, "color_{}".format(nurse))
+            for nurse in all_nurses
+        }
+        color = SuperDict(color)
+        violate_link = {
+            (n1, n2): model.NewBoolVar(f"violate_{n1}_{n2}") for n1, n2 in share_shift
+        }
+        violate_link = SuperDict(violate_link)
+        for n1, n2 in share_shift:
+            model.Add(color[n1] != color[n2]).OnlyEnforceIf(violate_link[n1, n2].Not())
+        same_color = {
+            (n1, n2): model.NewBoolVar(f"same_{n1}_{n2}")
+            for n1, n2 in consecutive_shift
+        }
+        same_color = SuperDict(same_color)
+        for n1, n2 in same_color:
+            model.Add(color[n1] == color[n2]).OnlyEnforceIf(same_color[n1, n2])
+        # obj_var = model.NewIntVar(0, max_colors, "total_colors")
+        # model.AddMaxEquality(obj_var, color.values())
+        model.Minimize(
+            # obj_var
+            cp_model.LinearExpr.Sum((violate_link * share_shift).values()) * weight
+            - cp_model.LinearExpr.Sum((same_color * consecutive_shift).values())
+            * weight2
+        )
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 30
+        solver.parameters.log_search_progress = True
+        termination_condition = solver.Solve(model)
+        color_sol = color.vapply(solver.Value)
+        return color_sol
+
+    @staticmethod
+    def solve_color_cbc(share_shift, consecutive_shift, weight, weight2):
+        model = pl.LpProblem("NurseGroups", pl.LpMinimize)
+        all_nurses = (
+            share_shift.keys_tl().take(0).unique()
+            + share_shift.keys_tl().take(1).unique()
+        ).unique()
+        all_nurses.sort()
+        max_colors = round(len(all_nurses) * 0.1) + 1
+        nurse_color = [(n, c) for n in all_nurses for c in range(max_colors)]
+        nurse_nurse = [
+            (n1, n2)
+            for pos, n1 in enumerate(all_nurses)
+            for n2 in all_nurses[pos + 1 :]
+        ]
+        assign = pl.LpVariable.dicts("color", nurse_color, cat=pl.LpBinary)
+        assign = SuperDict(assign)
+        share_color = pl.LpVariable.dicts("assign", nurse_nurse, cat=pl.LpBinary)
+        share_color = SuperDict(share_color)
+        model += (
+            sum((share_shift * share_color).values()) * weight
+            - sum((consecutive_shift * share_color).values()) * weight2
+        )
+        for n in all_nurses:
+            model += pl.lpSum([assign[n, c] for c in range(max_colors)]) == 1
+        for n1, n2 in share_color:
+
+            for c in range(max_colors):
+                # if both nurses have the same color: activate share_color
+                model += assign[n1, c] + assign[n2, c] <= 1 + share_color[n1, n2]
+                # if share_color is true, then the variables should be the same
+                model += (
+                    assign[n1, c] - assign[n2, c]
+                    <= (1 - share_color[n1, n2]) * max_colors
+                )
+                model += (
+                    assign[n2, c] - assign[n1, c]
+                    <= (1 - share_color[n1, n2]) * max_colors
+                )
+        solver = pl.PULP_CBC_CMD(msg=True, timeLimit=60)
+        model.solve(solver)
+        color_sol = (
+            assign.vfilter(lambda v: v.varValue == 1)
+            .keys_tl()
+            .to_dict(1, is_list=False)
+        )
+        return color_sol
+
+    def get_nurse_groups(self, nurse_shifts, weight, weight2):
         nurse__shift = (
             nurse_shifts.keys_tl()
             .to_dict(result_col=0)
             .vapply(sorted, key=lambda x: int(x[1:]))
         )
 
-        all_nurses = nurse_shifts.keys_tl().take(0).unique()
         share_shift = SuperDict()
         for s, nurses in nurse__shift.items():
             for pos, n1 in enumerate(nurses):
-                for n2 in nurses[pos + 1:]:
-                    share_shift[n1, n2] = share_shift.get((n1, n2), 0) + 1
+                for n2 in nurses[pos + 1 :]:
+                    my_tup = n1, n2
+                    if n1 > n2:
+                        my_tup = n2, n1
+                    if my_tup not in share_shift:
+                        share_shift[my_tup] = 0
+                    share_shift[my_tup] += 1
 
-        model = cp_model.CpModel()
-        max_colors = len(all_nurses)
-        color = {
-                nurse: model.NewIntVar(0, max_colors, "color_{}".format(nurse))
-                for nurse in all_nurses
-            }
-        color = SuperDict(color)
-        violate_link = {(n1, n2): model.NewBoolVar(f"violate_{n1}_{n2}") for n1, n2 in share_shift}
-        violate_link = SuperDict(violate_link)
-        for n1, n2 in share_shift:
-            model.Add(color[n1] != color[n2]).OnlyEnforceIf(violate_link[n1, n2].Not())
-        obj_var = model.NewIntVar(0, max_colors, "total_colors")
-        model.AddMaxEquality(obj_var, color.values())
-        model.Minimize(obj_var + cp_model.LinearExpr.Sum((violate_link * share_shift).values())*weight)
-        solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds =10
-        termination_condition = solver.Solve(model)
-        color_sol = color.vapply(solver.Value)
-        violate_link.vapply(solver.Value)
-        solver.Value(obj_var)
-        return color_sol
+        consecutive_shift = SuperDict()
+        for s, nurses in nurse__shift.items():
+            for pos, n1 in enumerate(nurses):
+                # we only check the following shifts as the reverse
+                # should be seen from the other nurse
+                # my_nurses = nurse__shift.get((s+1), []) + nurse__shift.get((s+2), [])
+                my_nurses = nurse__shift.get((s + 1), [])
+                for n2 in my_nurses:
+                    my_tup = n1, n2
+                    if n1 > n2:
+                        my_tup = n2, n1
+                    if my_tup not in consecutive_shift:
+                        consecutive_shift[my_tup] = 0
+                    consecutive_shift[my_tup] += 1
+        return self.solve_color_cpsat(share_shift, consecutive_shift, weight, weight2)
+        # return self.solve_color_cbc(share_shift, consecutive_shift, weight, weight2)

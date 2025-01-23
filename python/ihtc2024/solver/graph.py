@@ -4,6 +4,7 @@ from ..core.experiment import Experiment, Instance, Solution
 from ihtc2024.graph import get_nodes_ady_par, nodes_per_patient
 from ihtc2024.graph.graph import GraphTool
 import time
+import random as rn
 
 from pytups import SuperDict, TupList
 import logging as log
@@ -23,7 +24,8 @@ class Graph(Experiment):
         return sum(errors.vapply(len).values())
 
     def __init__(self, instance: Instance, solution: Solution = None):
-        super().__init__(instance, solution)
+        Experiment.__init__(self, instance, solution)
+        self.init = time.time()
         log.info(f"start creating nodes")
         nodes_ady = get_nodes_ady_par(self.instance, num_workers=4)
         log.info(f"end creating nodes: {len(nodes_ady)} nodes")
@@ -39,7 +41,7 @@ class Graph(Experiment):
 
     def solve(self, options: dict = None) -> dict:
         self.set_log_config(options)
-        time_init = time.time()
+        time_init = self.init
         patients_occupants = self.instance.get_patients_occupants()
 
         def get_start_margin(v):
@@ -52,11 +54,28 @@ class Graph(Experiment):
                 get_start_margin(v),
             )
         )
+        if self.solution is not None:
+            # if we already have a solution
+            # we only pass once
+            best_sol = self.solution.copy()
+            best_obj = self.get_objective()
+            num_passes = 1
+        else:
+            # if we're building a new solution,
+            # we do two tours
+            best_sol = None
+            best_obj = np.Inf
+            num_passes = 2
 
-        best_obj = np.Inf
-        best_sol = None
         time_limit = options.get("timeLimit", 60)
-        for i in range(2):
+        sum_errors = 0
+        for i in range(num_passes):
+            if i == 1:
+                # if we haven't reached feasibility, we leave
+                if sum_errors != 0:
+                    break
+                # the second iteration we shuffle the order of the patients
+                rn.shuffle(patients_occupants_s)
             for patient_info in patients_occupants_s:
                 if time.time() - time_init > time_limit:
                     log.info(f"TimeLimit ({time_limit}) reached")
@@ -90,21 +109,7 @@ class Graph(Experiment):
                     best_sol = self.solution.copy()
                 log.debug(f"current={objective}; errors={sum_errors}; best={best_obj}")
 
-        # TODO: try to guarantee feasible solution?
-        # possibilities:
-        # gender, surgeon capacity, room capacity, theater capacity
-        # available days:
-        # av_days = self.instance.get_patient_occupants_available_starts()[
-        #     patient_info["id"]
-        # ]
-        # s_available = errors['surgeon_overtime'].to_dictdict()[patient_info["surgeon_id"]].vfilter(lambda v: v <= -patient_info['surgery_duration'])
-        # ots_available = errors['ot_overtime'].vfilter(lambda v: v < -patient_info['surgery_duration']).keys_tl().to_dict(0)
-        # set(av_days) & set(s_available) & set(ots_available)
-        # patient_info["gender"]
-        # errors['gender'].
-        # errors.keys()
-
-        # if we have a best solution, we store it.
+        # if we have some solution in best_sol, we store it.
         # if now, we keep the "current solution".
         if best_sol is not None:
             self.solution = best_sol

@@ -12,12 +12,14 @@ from typing import Dict, Tuple
 import numpy as np
 import ihtc2024.graph.node as nd
 import os
+from ..core.instance import Instance
 
 
 class GraphTool(object):
     refs: Dict[Node, int]
     refs_inv: Dict[int, Node]
     g: gr.Graph
+    instance: Instance
     patient_graphs: Dict[str, gr.GraphView]
     shift_vp: gr.VertexPropertyMap
     pos_shift_vp: gr.VertexPropertyMap
@@ -28,7 +30,8 @@ class GraphTool(object):
     skill_level_vp: gr.VertexPropertyMap
     max_load_vp: gr.VertexPropertyMap
     needs_wl_vp: gr.VertexPropertyMap
-    weights: gr.EdgePropertyMap
+    nurse_group: gr.VertexPropertyMap
+    edge_changes_group: gr.EdgePropertyMap
     edges: np.ndarray
     nodes__n_s: SuperDict[Tuple[str, int], list[int]]
     nodes__r_s: SuperDict[Tuple[str, int], list[int]]
@@ -75,7 +78,6 @@ class GraphTool(object):
         self.g.reindex_edges()
 
         # graph params:
-        self.weights = self.g.new_ep("int")
         self.edges = self.g.get_edges()
         self.nurse_vp = self.g.new_vp("int")
         self.theater_vp = self.g.new_vp("int")
@@ -98,13 +100,20 @@ class GraphTool(object):
         # service level needs
         self.skill_level_vp = self.g.new_vp("int", val=0)
         self.max_load_vp = self.g.new_vp("int", val=0)
+        # nurse group
+        self.nurse_group = self.g.new_vp("int")
+        self.edge_changes_group = self.g.new_ep("bool")
         # get a dictionary with a list of nodes for each nurse and shift combination:
         self.nodes__n_s = SuperDict()
+        # all nodes per room-shift combination
         self.nodes__r_s = SuperDict()
+        # all nodes per shif-position
         self.nodes__pos = SuperDict()
 
         nurse_sl = self.instance.get_nurses().get_property("skill_level")
         nurse_ml = self.instance.get_nurse_shift().get_property("max_load")
+        nurse_shifts = self.instance.get_nurse_shift()
+        nurse_group = self.instance.get_nurse_groups(nurse_shifts, 5, 1)
 
         for v in self.g.vertices():
             node = self.refs_inv[v]
@@ -119,6 +128,7 @@ class GraphTool(object):
                 continue
             self.skill_level_vp[v] = nurse_sl[node.nurse]
             self.max_load_vp[v] = nurse_ml[node.nurse, node.shift]
+            self.nurse_group[v] = nurse_group[node.nurse]
 
             vertex_i = self.g.vertex_index[v]
             pos_shift = node.pos_shift
@@ -133,6 +143,16 @@ class GraphTool(object):
             if room_shift not in self.nodes__r_s:
                 self.nodes__r_s[room_shift] = []
             self.nodes__r_s[room_shift].append(vertex_i)
+
+        # we calculate the edges that change group
+        edges_all = self.edges
+        targets = edges_all[:, 1]
+        sources = edges_all[:, 0]
+        type_arr = self.type_vp.get_array()
+        nurse_group_arr = self.nurse_group.get_array()
+        self.edge_changes_group = (type_arr[sources] == TYPE.NURSE) & (
+            nurse_group_arr[targets] != nurse_group_arr[sources]
+        )
 
         # for each patient_occupant, we create a view of the graph
         # that filters the nodes and edges that are not feasible
@@ -155,9 +175,6 @@ class GraphTool(object):
             shift_arr: np.ndarray = self.shift_vp.get_array()
             shift_pos_arr: np.ndarray = self.pos_shift_vp.get_array()
 
-            edges_all = self.edges
-            targets = edges_all[:, 1]
-            sources = edges_all[:, 0]
             edges_to_sink = targets == sink
             # also, length_of_day determines the number of shifts
             # a patient can only go to the sink from the last shift
@@ -188,6 +205,7 @@ class GraphTool(object):
             log.info("Finish creating patient views")
         # some cache:
         self.__needs__p__s = self.instance.get_patients_occupants_needs().to_dictdict()
+
         print(f"Process {os.getpid()}, graph ends")
         return
 
@@ -394,9 +412,7 @@ class GraphTool(object):
         refs_inv = self.refs_inv
         graph = self.filter_feasibility(checks, patient_info)
 
-        weights = self.get_weights(
-            node1, node2, checks, patient_info, graph, experiment
-        )
+        weights = self.get_weights(node1, node2, checks, patient_info, experiment)
 
         source = find_vertex(graph, refs, node1)
         target = find_vertex(graph, refs, node2)
@@ -559,7 +575,7 @@ class GraphTool(object):
                 diff_error[relevant_node] += penalty_2 - penalty_1
         return new_patient_penalty + diff_error
 
-    def get_overwork_scores(self, checks, patient_info, graph):
+    def get_overwork_scores(self, checks, patient_info):
         # load by room, shift, nurse
         current_workload = (
             checks["shift_details"]
@@ -622,16 +638,46 @@ class GraphTool(object):
 
         return new_penalty_n1 + new_penalty_n2 - current_penalty_n1 - current_penalty_n2
 
-    def get_continuity_care_scores(self):
-        # we look for the last nodes before the sink
-        # and apply the cost when entering them
-        n_continuity_care = self.g.new_vp("int")
-        last_nodes = self.g.vertex(self.get_sink_node()).in_neighbors()
-        for node in last_nodes:
-            n_continuity_care[node] = len(self.refs_inv[node].hist_nurses)
-        return n_continuity_care.get_array()
+    def get_continuity_care_scores(self, checks):
+        # (1) get arcs where the group of the nurse changes.
+        #    this can be calculated once and cached
+        # self.edge_changes_group
+        # (2) count the number of patients active in that arc
+        #    based on the room and shift of the origin node
+        # the weight is the number of patients that change group
 
-    def get_weights(self, node1, node2, checks, patient_info, graph, experiment):
+        # here I need to filter those patients who have pos=0
+        # as those patients just started in shift s and are thus
+        # not changing nurse, yet.
+        # print(checks["shift_details"])
+        patients__r_s = (
+            checks["shift_details"]
+            .values_tl()
+            .vfilter(lambda v: v["pos_shift"] > 0)
+            .to_dict(None, indices=["room", "shift"])
+            .vapply(len)
+            # we add 1 to count the unassigned patient
+            .vapply(lambda v: v + 1)
+        )
+        nurse_group = self.nurse_group.get_array()
+        weight = np.zeros_like(nurse_group)
+
+        # we update the nodes per room, shift:
+        for (r, s), number in patients__r_s.items():
+            weight[self.nodes__r_s[r, s]] = number
+
+        targets = self.edges[:, 1]
+        # this is projecting the weight of the target to the arc.
+        # and filtering to only arcs that change group
+
+        # i.e., it's counting how many patients are continuing
+        # in that room and changing nurse group
+        my_weights = np.zeros_like(self.edge_changes_group)
+        my_weights[self.edge_changes_group] = weight[targets][self.edge_changes_group]
+        # my_weights[~self.edge_changes_group] = 0
+        return my_weights
+
+    def get_weights(self, node1, node2, checks, patient_info, experiment):
         nodes_window = self.get_nodes_in_window(node1, node2)
         edges_all = self.edges
         targets = edges_all[:, 1]
@@ -644,21 +690,23 @@ class GraphTool(object):
         n_open_theater = self.get_opened_theater_scores(checks)
         n_surgeon_transfer = self.get_surgeon_transfer_scores(checks, patient_info)
         n_age_diff = self.get_age_scores(checks, patient_info)
-        n_workload = self.get_overwork_scores(checks, patient_info, graph)
+        n_workload = self.get_overwork_scores(checks, patient_info)
         n_skill_level = self.get_skill_level_scores(checks, patient_info, experiment)
-        # TODO: here we need to calculate how changing a nurse affects the other patients
-        # n_continuity_care = self.get_continuity_care_scores()
+        n_continuity_care = self.get_continuity_care_scores(checks)
+        noise = np.random.rand(relevant_edge.sum())
 
         out_weights = self.g.new_ep("int")
         out_weights.a[relevant_edge] = (
             n_workload[targets][relevant_edge] * weights["nurse_eccessive_workload"]
-            # + n_continuity_care[targets][relevant_edge] * weights["continuity_of_care"]
+            + n_continuity_care[relevant_edge] * weights["continuity_of_care"]
             + n_admission_delay[targets][relevant_edge] * weights["patient_delay"]
             + edge_unassigned[relevant_edge] * weights["unscheduled_optional"]
             + n_skill_level[targets][relevant_edge] * weights["room_nurse_skill"]
             + n_age_diff[targets][relevant_edge] * weights["room_mixed_age"]
             + n_open_theater[targets][relevant_edge] * weights["open_operating_theater"]
             + n_surgeon_transfer[targets][relevant_edge] * weights["surgeon_transfer"]
+            # a bit of noise in the arcs:
+            + noise
         )
         return out_weights
 

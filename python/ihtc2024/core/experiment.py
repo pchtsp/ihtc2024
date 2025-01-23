@@ -81,9 +81,11 @@ class Experiment(ExperimentCore):
         with open(path, "r") as f:
             data_json = json.load(f)
         return cls.from_dict(data_json)
-    
+
     @classmethod
-    def from_ihtc_dir(cls, path: str, instance_name:str, solution_name:str) -> "Experiment":
+    def from_ihtc_dir(
+        cls, path: str, instance_name: str, solution_name: str
+    ) -> "Experiment":
         instance = Instance.from_ihtc_json(os.path.join(path, instance_name))
         solution = Solution.from_ihtc_json(os.path.join(path, solution_name))
         return cls(instance, solution)
@@ -193,10 +195,12 @@ class Experiment(ExperimentCore):
         )
         # admission day
         p_days = self.instance.get_patient_occupants_available_starts()
-        admission_err = p_assignment.vfilter(
-            lambda v: not patients[v["id"]]["is_occupant"]
-        ).get_property("admission_day").kvfilter(lambda k, v: v not in p_days[k]
-        ).kvapply(lambda k, v: (v, p_days[k][0], p_days[k][-1]))
+        admission_err = (
+            p_assignment.vfilter(lambda v: not patients[v["id"]]["is_occupant"])
+            .get_property("admission_day")
+            .kvfilter(lambda k, v: v not in p_days[k])
+            .kvapply(lambda k, v: (v, p_days[k][0], p_days[k][-1]))
+        )
 
         return SuperDict(
             h1=gender_err,
@@ -279,8 +283,7 @@ class Experiment(ExperimentCore):
 
         # unscheduled patients [S8]:
         unscheduled_patients = (
-            patients
-            .vfilter(lambda v: not v.get('mandatory', True))
+            patients.vfilter(lambda v: not v.get("mandatory", True))
             .keys_tl()
             .set_diff(patient_assignment.keys())
             .to_dict(None)
@@ -401,7 +404,7 @@ class Experiment(ExperimentCore):
                     continue
                 nurse = nurse_shift_assignment[room, shift]["id"]
                 needs__p_s[p, pos].update(
-                    SuperDict(shift=shift, nurse=nurse, room=room)
+                    SuperDict(shift=shift, nurse=nurse, room=room, pos_shift=pos)
                 )
                 result[p, shift] = needs__p_s[p, pos]
         return result
@@ -494,7 +497,8 @@ class Experiment(ExperimentCore):
         formatter = log.Formatter(logFormat)
         file_log_handler = None
         if logFile:
-            open(logFile, "w").close()
+            if not os.path.exists(logFile):
+                open(logFile, "w").close()
             # to file:
             file_log_handler = log.FileHandler(logFile, "a")
             file_log_handler.setFormatter(formatter)

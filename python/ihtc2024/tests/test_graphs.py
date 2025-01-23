@@ -20,21 +20,23 @@ class TestInstance(BaseTestInstance):
 
     def test_group_nurses(self):
         nurse_shifts = self.instance.get_nurse_shift()
-        nurse__shift = (
-            nurse_shifts.keys_tl()
-            .to_dict(result_col=0)
-            .vapply(sorted, key=lambda x: int(x[1:]))
-        )
-        share_shift = SuperDict()
-        for s, nurses in nurse__shift.items():
-            for pos, n1 in enumerate(nurses):
-                for n2 in nurses[pos + 1 :]:
-                    share_shift[n1, n2] = share_shift.get((n1, n2), 0) + 1
+        groups = self.instance.get_nurse_groups(nurse_shifts, 0.05, 0.015)
+        print(f"nurses: {len(groups)}")
+        print(f"groups: {len(groups.values_tl().unique2())}")
 
-    def test_group_nurses2(self):
-        nurse_shifts = self.instance.get_nurse_shift()
-        groups = self.instance.get_nurse_groups(nurse_shifts, 0.1)
-        print(groups)
+    def test_group_nurses_larger(self):
+        # my_experim = self.get_solved_experiment("test05.json")
+        my_experim = self.get_test_experiment("i29.json")
+        nurse_shifts = my_experim.instance.get_nurse_shift()
+        groups = self.instance.get_nurse_groups(nurse_shifts, 5, 1)
+        print(f"nurses: {len(groups)}")
+        print(f"groups: {len(groups.values_tl().unique2())}")
+        # members = groups.vfilter(lambda v: v==4)
+        # nurse_shifts.kfilter(lambda k: k[0]=='n015').vapply(lambda v: v['shift_pos']).values_tl()
+        # nurse_shifts.kfilter(lambda k: k[0]=='n016').vapply(lambda v: v['shift_pos']).values_tl()
+        # nurse_shifts.kfilter(lambda k: k[0]=='n063').vapply(lambda v: v['shift_pos']).values_tl()
+        groups.vapply(lambda v: [v]).list_reverse()
+
 
     def test_build_graph(self):
         my_experim = self.get_solved_experiment("test01.json")
@@ -71,6 +73,7 @@ class TestInstance(BaseTestInstance):
             self.assertEqual(edges, one_graph_edges)
 
     def test_time_nodes_per_patient(self):
+        # my_experim = self.get_solved_experiment("test01.json")
         my_experim = self.get_test_experiment("i19.json")
         # my_experim = self.get_test_experiment("i01.json")
         # my_experim = self.get_test_experiment("i15.json")
@@ -81,23 +84,6 @@ class TestInstance(BaseTestInstance):
             nodes_ady=nodes_ady,
             nodes_ady_p=nodes_per_patient,
         )
-        # import multiprocessing as multi
-        #
-        # results = {}
-        # my_graphs = {}
-        # with multi.Pool(processes=8) as pool:
-        #     for p, nodes_ady in nodes_per_patient.items():
-        #         results[p] = pool.apply_async(
-        #             GraphTool, [my_experim.instance, nodes_ady, False]
-        #         )
-        #     for p, a in results.items():
-        #         my_graphs[p] = a.get()
-        # my_graphs = {
-        #     p: GraphTool(
-        #         instance=my_experim.instance, nodes_ady=nodes_ady, patient_graphs=False
-        #     )
-        #     for p, nodes_ady in nodes_per_patient.items()
-        # }
 
     def test_create_patient_graph(self):
 

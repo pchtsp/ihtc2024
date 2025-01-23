@@ -38,7 +38,7 @@ class CpSAT(Experiment):
     nurses_id: dict
 
     def __init__(self, instance: Instance, solution: Solution = None):
-        super().__init__(instance, solution)
+        Experiment.__init__(self, instance, solution)
         self.rooms_id = self.get_rooms_with_id()
         self.nurses_id = self.get_nurses_with_id()
         self.init = time.time()
@@ -143,12 +143,8 @@ class CpSAT(Experiment):
         if VERBOSE:
             self.print_time("Building of model starts")
 
-        rooms = self.rooms_id
-        nurses = self.nurses_id
-        rooms_id__pos = self.rooms_id.values_tl().to_dict(
-            "id", indices="pos", is_list=False
-        )
         solver = cp_model.CpSolver()
+        status = cp_model.UNKNOWN
         for max_sample in MAX_SAMPLE_OPTIONS:
             if VERBOSE:
                 self.print_time(f"Phase1: maxSample: {max_sample}")
@@ -160,168 +156,34 @@ class CpSAT(Experiment):
                 my_options_1["logPath"] = name + "_pre" + ext
 
             model = cp_model.CpModel()
-            if VERBOSE:
-                self.print_time("Non-nurse constraints")
             my_vars = self.add_non_nurse_constraints(model, my_options_1)
+            my_vars = self.add_nurse_constraints(model, my_vars)
 
             if VERBOSE:
                 self.print_time("Objective function")
             self.get_objective_function(model, my_vars)
             if self.solution and (TIME_WINDOW or WARM_START):
                 self.warm_start(model, my_vars)
-            status1 = self.call_solver(model, solver, my_options_1)
-            if status1 in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+            status = self.call_solver(model, solver, my_options_1)
+            if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
                 # as soon as we find a feasible solution, we exit
                 break
-
-        sol_data = self.my_vars_to_solution(solver, my_vars)
-        self.solution = Solution.from_dict(sol_data)
-        # here we warm start the values of non-nurse variables
-        self.warm_start(model, my_vars)
-        # here we fix the values of admissions, room assignments, theater and stay
-        for var_name in ["admission_bin", "room_binary", "theater_bin", "stay_bin"]:
-            my_vars[var_name] = my_vars[var_name].vfilter(solver.Value)
-        # TODO: here I will edit my_vars to fix everything nurse-related
-        #  that is not happening inside the time window
-
-        if VERBOSE:
-            self.print_time("Nurse constraints")
-
-        # we add the nurse constraints
-        my_vars = self.add_nurse_constraints(model, my_vars)
-        if VERBOSE:
-            self.print_time("Objective function constraints")
-
-        # we add the complete objective function
-        self.get_objective_function(model, my_vars)
-        # we subtract the elapsed time from the time limit
-        my_options_2 = dict(options)
-        my_options_2["timeLimit"] = TIME_LIMIT - min(
-            my_options_1["timeLimit"], solver.UserTime()
-        )
-        my_options_2["timeLimit"] = max(my_options_2["timeLimit"], 10)
-        my_options_2["fixSolution"] = True
-        status = self.call_solver(model, solver, my_options_2)
-
-        # TODO: here I could try to warm start the whole model if it's not too big
-
-        # we try to explore the smallest domains of rooms and nurses
-        # model.AddDecisionStrategy(
-        #     room_p.kfilter(lambda k: k in patients).values_tl() + nurse_r_s.values_tl(),
-        #     cp_model.CHOOSE_MIN_DOMAIN_SIZE,
-        #     cp_model.SELECT_MIN_VALUE,
-        # )
-        # # we try to force admissions to true as much as possible
-        # model.AddDecisionStrategy(
-        #     admission_bin.values_tl(),
-        #     cp_model.CHOOSE_FIRST,
-        #     cp_model.SELECT_MAX_VALUE,
-        # )
 
         if options.get("msg", False):
             print(f"Model finished with status {status_conv.get(status)}")
 
-        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            if VERBOSE:
-                print("No solution was found")
-            return dict(
-                status=status_conv.get(status), status_sol=SOLUTION_STATUS_INFEASIBLE
-            )
+            if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+                if VERBOSE:
+                    print("No solution was found")
+                return dict(
+                    status=status_conv.get(status),
+                    status_sol=SOLUTION_STATUS_INFEASIBLE,
+                )
 
         sol_data = self.my_vars_to_solution(solver, my_vars)
         self.solution = Solution.from_dict(sol_data)
 
         return dict(status=status_conv.get(status), status_sol=SOLUTION_STATUS_FEASIBLE)
-
-        ####### TEMP DEBUG
-        self.solution.get_patient_assignment().get_property("room")
-        room_p.vapply(solver.Value).vapply(lambda v: rooms_id__pos.get(v))
-
-        patient_details = self.get_patient_shift_details()
-        model_needed_sl = skill_needed__p_s.vapply(solver.Value)
-        model_nurse = nurse__p_s.vapply(solver.Value).vapply(
-            lambda v: nurse_id__pos.get(v)
-        )
-        model_skill_level_assigned = skill_level__p_s.vapply(solver.Value)
-        model_skill_level_diff = skill_diff__p_s.vapply(solver.Value)
-        assigned_nurse = patient_details.get_property("nurse")
-        # we compare the required skill per shift
-        patient_details.get_property("skill_level_required").kvfilter(
-            lambda k, v: v != model_needed_sl[k]
-        )
-        model_needed_sl.kvfilter(
-            lambda k, v: v
-            != patient_details.get_m(k, "skill_level_required", default=0)
-        )
-
-        # we compare the nurses assignment
-        assigned_nurse.kvfilter(lambda k, v: v != model_nurse[k])
-        model_nurse.vfilter(lambda v: v is not None).kvfilter(
-            lambda k, v: v != assigned_nurse.get_m(k, default=0)
-        )
-
-        skill_level_assigned = patient_details.get_property("nurse").vapply(
-            lambda v: nurses[v]["skill_level"]
-        )
-        # we compare the assigned skill level
-        skill_level_diff = (
-            patient_details.get_property("skill_level_required") - skill_level_assigned
-        ).vapply(lambda v: max(v, 0))
-        skill_level_assigned.kvfilter(lambda k, v: v != model_skill_level_assigned[k])
-        model_skill_level_assigned.kvfilter(
-            lambda k, v: v != skill_level_assigned.get_m(k, default=0)
-        )
-        # we compare skill_level_diff
-        (skill_level_diff - model_skill_level_diff).vfilter(lambda v: v > 0)
-        model_skill_level_diff.kvfilter(
-            lambda k, v: v != skill_level_diff.get_m(k, default=0)
-        )
-        assigned_n_p = patient_details.values_tl().take(["nurse", "id"]).unique2()
-        model_nurse_patients = (
-            nurse_patient__n_p.vapply(solver.Value)
-            .vfilter(lambda v: v > 0)
-            .keys_tl()
-            .vapply(lambda v: (nurse_id__pos[v[0]], v[1]))
-        )
-        # we compare the count of nurses to patient
-        #  we have one difference.
-        assigned_n_p.set_diff(model_nurse_patients)
-        model_nurse_patients.set_diff(assigned_n_p)
-
-        # the model assigns more shift-nurses-patients than it should
-        model_n_p_s = (
-            nurse_patient__n_p_s.vapply(solver.Value)
-            .vfilter(lambda v: v > 0)
-            .keys_tl()
-            .vapply(lambda v: (nurse_id__pos[v[0]], v[1], v[2]))
-        )
-        assigned_n_p_s = patient_details.values_tl().take(["nurse", "id", "shift"])
-        assigned_n_p_s.set_diff(model_n_p_s)
-        model_n_p_s.set_diff(assigned_n_p_s)
-        # Out[39]: [('n03', 'p56', 34), ('n04', 'p56', 35), ('n09', 'p56', 33)]
-        model_p_s = (
-            nurse_patient__n_p_s.vapply(solver.Value)
-            .vfilter(lambda v: v > 0)
-            .keys_tl()
-            .vapply(lambda v: (v[1], v[2]))
-            .unique2()
-        )
-        patient_occupants_shifts = self.get_patient_occupant_stay_shifts()
-        assigned_p_s = patient_occupants_shifts.vapply(list).to_tuplist()
-        assigned_p_s.set_diff(model_p_s)
-        model_p_s.set_diff(assigned_p_s)
-
-        mode_admission_bin = admission_bin.vapply(solver.Value)
-        model_stay_bin = stay_bin.vapply(solver.Value)
-        # mode_admission_bin.kfilter(lambda k: k[0]=='p56')
-        # model_stay_bin.kfilter(lambda k: k[0]=='p56')
-        # stay_bin[('p56', 11)]
-        # patients['p56']
-        patient_occupants_days = self.get_patient_occupant_stay_days()
-
-        # we're counting p4 to have n2, but it's not true.
-        # nurse__p_s
-        # model.ExportToFile("model.txt")
 
     def call_solver(self, model, solver, options):
 
@@ -339,9 +201,10 @@ class CpSAT(Experiment):
         if "fixSolution" in options:
             solver.parameters.fix_variables_to_their_hinted_value = True
         solution_callback = None
-        solution_callback = StopOnMovingAverageImprovement(
-            ma_size=20, min_imp_per_sec=5, length_bad_imp=20
-        )
+        stop_condition = options.get("stop_condition")
+        if stop_condition is None:
+            stop_condition = dict(ma_size=20, min_imp_per_sec=5, length_bad_imp=20)
+        solution_callback = StopOnMovingAverageImprovement(**stop_condition)
 
         # if options.get("msg", False):
         #     solution_callback = VarArraySolutionPrinter()
@@ -351,7 +214,9 @@ class CpSAT(Experiment):
 
         path_of_log = options.get("logPath")
         if path_of_log is not None:
-            with open(path_of_log, "w") as f, stdout_redirected(f):
+            if not os.path.exists(path_of_log):
+                open(path_of_log, "w").close()
+            with open(path_of_log, "a") as f, stdout_redirected(f):
                 return solver.Solve(model, solution_callback)
         else:
             return solver.Solve(model, solution_callback)
@@ -383,6 +248,8 @@ class CpSAT(Experiment):
         if start is None:
             max_start = max(0, self.instance.get_horizon_size_days() - size)
             start = rn.randint(0, max_start)
+        else:
+            size = min(size, self.instance.get_horizon_size_days() - start)
         window = range(start, start + size)
         assignments = self.solution.get_patient_assignment().copy_deep()
         patients_in_tw = assignments.vfilter(
@@ -478,6 +345,28 @@ class CpSAT(Experiment):
                 if p in patients
             }
         )
+        admission_p = (
+            admission_bin.keys_tl()
+            .to_dict(1)
+            .kvapply(
+                lambda k, v: (
+                    model.NewIntVarFromDomain(
+                        cp_model.Domain.FromValues(values=v), f"admission_{k}"
+                    )
+                )
+            )
+        )
+        # occupants start at 0
+        #  we care because we use admission for intervals/stay
+        for o in occupants:
+            admission_p[o] = 0
+        for p, d in admission_bin:
+            model.Add(admission_p[p] == d).OnlyEnforceIf(admission_bin[p, d])
+            # we cannot add this one because it leads to infeasible solutions
+            # when there are optional patients
+            # model.Add(admission_p[p] != d).OnlyEnforceIf(
+            #     negate_var_bool(admission_bin[p, d])
+            # )
 
         theater_bin = SuperDict(
             {
@@ -605,32 +494,26 @@ class CpSAT(Experiment):
                 if (ot, p, d) not in domain__ot_p_d_set:
                     model.Add(admission_bin[p, d] + theater_bin[p, ot] <= 1)
 
-        # # tie the binary with the decision variable:
-        # for p in patients:
-        #     for ot in operation_theaters:
-        #         model.Add(theater[p] == d).OnlyEnforceIf(admission_bin[p, d])
-        #         model.Add(admission[p] != d).OnlyEnforceIf(admission_bin[p, d].Not())
-
         # H2
         if VERBOSE:
             self.print_time("H2 constraints")
 
-        domain__p_r_d = TupList(
-            [
-                (p, r, d)
-                for p, rr in available_rooms__p.items()
-                for r in rr
-                for d in possible_stay[p]
-            ]
-        )
-        room__p_r_d = domain__p_r_d.to_dict(None).vapply(
-            lambda v: model.NewBoolVar(f"room_{v[0]}_{v[1]}_{v[2]}")
-        )
-        # we tie room_p_r_d to room and stay:
-        for p, r, d in domain__p_r_d:
-            multiple_ands(
-                model, room__p_r_d[p, r, d], room_binary[p, r], stay_bin[p, d]
-            )
+        # domain__p_r_d = TupList(
+        #     [
+        #         (p, r, d)
+        #         for p, rr in available_rooms__p.items()
+        #         for r in rr
+        #         for d in possible_stay[p]
+        #     ]
+        # )
+        # room__p_r_d = domain__p_r_d.to_dict(None).vapply(
+        #     lambda v: model.NewBoolVar(f"room_{v[0]}_{v[1]}_{v[2]}")
+        # )
+        # # we tie room_p_r_d to room and stay:
+        # for p, r, d in domain__p_r_d:
+        #     multiple_ands(
+        #         model, room__p_r_d[p, r, d], room_binary[p, r], stay_bin[p, d]
+        #     )
 
         # patients that are mandatory will always have a room.
         # occupants are considered mandatory (so default: True)
@@ -650,6 +533,7 @@ class CpSAT(Experiment):
                 else v[0]
             )
         )
+
         # we tie binary and element variables
         for p, _rooms in available_rooms__p.items():
             for r in _rooms:
@@ -659,74 +543,78 @@ class CpSAT(Experiment):
                 )
 
         gender = patients_occupants.get_property("gender")
-        patients_list = patients_occupants.keys_tl()
-        patients_num = len(patients_list)
-        possible_stay_s = possible_stay.vapply(set)
+        # patients_list = patients_occupants.keys_tl()
+        # patients_num = len(patients_list)
+        # possible_stay_s = possible_stay.vapply(set)
 
-        possible_stays = {
-            (p1, patients_list[pos2]): possible_stay_s[p1]
-            & possible_stay_s[patients_list[pos2]]
-            for pos1, p1 in enumerate(patients_list)
-            for pos2 in range(pos1 + 1, patients_num)
-        }
-        available_rooms__p_s = available_rooms__p.vapply(set)
-        possible_rooms = {
-            (p1, patients_list[pos2]): available_rooms__p_s[p1]
-            & available_rooms__p_s[patients_list[pos2]]
-            for pos1, p1 in enumerate(patients_list)
-            for pos2 in range(pos1 + 1, patients_num)
-        }
+        # possible_stays = {
+        #     (p1, patients_list[pos2]): possible_stay_s[p1]
+        #     & possible_stay_s[patients_list[pos2]]
+        #     for pos1, p1 in enumerate(patients_list)
+        #     for pos2 in range(pos1 + 1, patients_num)
+        # }
+        # available_rooms__p_s = available_rooms__p.vapply(set)
+        # possible_rooms = {
+        #     (p1, patients_list[pos2]): available_rooms__p_s[p1]
+        #     & available_rooms__p_s[patients_list[pos2]]
+        #     for pos1, p1 in enumerate(patients_list)
+        #     for pos2 in range(pos1 + 1, patients_num)
+        # }
         if VERBOSE:
             self.print_time("H1 constraints prep1")
 
-        shared_room_domain__p1_p2_r_d = TupList(
-            (p1, p2, room_pos, d)
-            for (p1, p2), days in possible_stays.items()
-            for room_pos in possible_rooms[p1, p2]
-            for d in days
-        )
+        # shared_room_domain__p1_p2_r_d = TupList(
+        #     (p1, p2, room_pos, d)
+        #     for (p1, p2), days in possible_stays.items()
+        #     for room_pos in possible_rooms[p1, p2]
+        #     for d in days
+        # )
         if VERBOSE:
             self.print_time("H1 constraints prep2")
 
         # two patients share a room on day d?
-        share_room = SuperDict(
-            {
-                (p1, p2, r, d): model.NewBoolVar(f"share_{p1}_{p2}_{r}_{d}")
-                for p1, p2, r, d in shared_room_domain__p1_p2_r_d
-                if gender[p1] == gender[p2]
-            }
-        )
-
+        # share_room = SuperDict(
+        #     {
+        #         (p1, p2, r, d): model.NewBoolVar(f"share_{p1}_{p2}_{r}_{d}")
+        #         for p1, p2, r, d in shared_room_domain__p1_p2_r_d
+        #         if gender[p1] == gender[p2]
+        #     }
+        # )
         if VERBOSE:
             self.print_time("H1 constraints actual")
+        # we create an interval per patient-room
+        patient_room_interval = SuperDict()
+        for p, r in room_binary:
+            patient_room_interval[p, r] = model.NewOptionalFixedSizeIntervalVar(
+                start=admission_p[p],
+                size=length_of_stay[p],
+                is_present=room_binary[p, r],
+                name=f"interval_{p}_{r}",
+            )
 
         # H1
-        # TODO: this could be a 2D no-overlap I suspect?
-        for p1, p2, room_pos, d in shared_room_domain__p1_p2_r_d:
-            # if they share the same gender, we need to register if they share a room
-            if gender[p1] == gender[p2]:
-                multiple_ands(
-                    model,
-                    share_room[p1, p2, room_pos, d],
-                    room__p_r_d[p1, room_pos, d],
-                    room__p_r_d[p2, room_pos, d],
-                )
-                # model.Add(share_room[p1, p2, room_pos, d] == 1).OnlyEnforceIf(
-                #     room__p_r_d[p1, room_pos, d], room__p_r_d[p2, room_pos, d]
-                # )
-            else:
-                # if they share gender they cannot share a room
-                model.AddImplication(
-                    room__p_r_d[p1, room_pos, d],
-                    negate_var_bool(room__p_r_d[p2, room_pos, d]),
-                )
-                model.AddImplication(
-                    room__p_r_d[p2, room_pos, d],
-                    negate_var_bool(room__p_r_d[p1, room_pos, d]),
-                )
-                # model.Add(
-                #     room__p_r_d[p1, room_pos, d] + room__p_r_d[p2, room_pos, d] <= 1
-                # )
+        # for p1, p2, room_pos, d in shared_room_domain__p1_p2_r_d:
+        #     # if they share the same gender, we need to register if they share a room
+        #     if gender[p1] == gender[p2]:
+        #         multiple_ands(
+        #             model,
+        #             share_room[p1, p2, room_pos, d],
+        #             room__p_r_d[p1, room_pos, d],
+        #             room__p_r_d[p2, room_pos, d],
+        #         )
+        #         # model.Add(share_room[p1, p2, room_pos, d] == 1).OnlyEnforceIf(
+        #         #     room__p_r_d[p1, room_pos, d], room__p_r_d[p2, room_pos, d]
+        #         # )
+        #     else:
+        #         # if they do not share gender they cannot share a room
+        #         model.AddImplication(
+        #             room__p_r_d[p1, room_pos, d],
+        #             negate_var_bool(room__p_r_d[p2, room_pos, d]),
+        #         )
+        #         model.AddImplication(
+        #             room__p_r_d[p2, room_pos, d],
+        #             negate_var_bool(room__p_r_d[p1, room_pos, d]),
+        #         )
 
         # room capacity
         if VERBOSE:
@@ -735,10 +623,32 @@ class CpSAT(Experiment):
         room_capacity = rooms.values_tl().to_dict(
             "capacity", indices="pos", is_list=False
         )
-        patients__r_d = domain__p_r_d.to_dict(0)
-        for (room_pos, day), _patients in patients__r_d.items():
-            _patients_in_room = [room__p_r_d[p, room_pos, day] for p in _patients]
-            model.Add(my_sum(_patients_in_room) <= room_capacity[room_pos])
+        p__room = room_binary.keys_tl().to_dict(0).vapply(set)
+        p__gender = gender.vapply(lambda v: [v]).list_reverse().vapply(set)
+        # here we want to split patients by gender
+        # and then create a AddCumulative per room-gender-patientsOfOppositeGender
+        # with [all in gender A] + [one in gender B]*capacity <= capacity
+        for r, capacity in room_capacity.items():
+            for gender, __patients in p__gender.items():
+                cap_1 = __patients & p__room[r]
+                others = p__room[r] - __patients
+                my_intervals = [patient_room_interval[p, r] for p in cap_1]
+                # all intervals of gender A consume 1
+                # + each interval of gender B consumes "capacity"
+                # meaning: I can put at most #capacity gender A intervals
+                # but if I put 1 gender B, I cannot put ANY gender A intervals
+                for other in others:
+                    __my_intervals = my_intervals + [patient_room_interval[other, r]]
+                    model.AddCumulative(
+                        __my_intervals,
+                        [1] * len(my_intervals) + [capacity],
+                        capacity,
+                    )
+
+        # patients__r_d = domain__p_r_d.to_dict(0)
+        # for (room_pos, day), _patients in patients__r_d.items():
+        #     _patients_in_room = [room__p_r_d[p, room_pos, day] for p in _patients]
+        #     model.Add(my_sum(_patients_in_room) <= room_capacity[room_pos])
 
         # S1
         if VERBOSE:
@@ -748,26 +658,42 @@ class CpSAT(Experiment):
         age_group = patients_occupants.get_property("age_group").vapply(
             lambda v: agegroups[v]["pos"]
         )
+        all_age_groups = age_group.values_tl().unique()
+        min_ag, max_ag = min(all_age_groups), max(all_age_groups)
         num_ages = len(set(age_group.values_tl()))
-        shared_room__r_d = shared_room_domain__p1_p2_r_d.to_dict(None, indices=[2, 3])
+        all_rooms = room_binary.keys_tl().take(1).unique()
         max_age_diff = SuperDict(
             {
                 (r, d): model.NewIntVar(0, num_ages - 1, name=f"max_age_diff_{r}_{d}")
-                for r, d in shared_room__r_d
+                for r in all_rooms
+                for d in range(horizon_days_size)
+            }
+        )
+        max_age = SuperDict(
+            {
+                (r, d): model.NewIntVar(min_ag, max_ag, name=f"max_age_{r}_{d}")
+                for r, d in max_age_diff
+            }
+        )
+        min_age = SuperDict(
+            {
+                (r, d): model.NewIntVar(min_ag, max_ag, name=f"min_age_{r}_{d}")
+                for r, d in max_age_diff
             }
         )
         age_group = patients_occupants.get_property("age_group").vapply(
             lambda v: agegroups[v]["pos"]
         )
-        for p1, p2, room_pos, d in shared_room_domain__p1_p2_r_d:
-            if gender[p1] != gender[p2]:
-                continue
-            model.Add(
-                max_age_diff[room_pos, d] >= age_group[p1] - age_group[p2]
-            ).OnlyEnforceIf(share_room[p1, p2, room_pos, d])
-            model.Add(
-                max_age_diff[room_pos, d] >= age_group[p2] - age_group[p1]
-            ).OnlyEnforceIf(share_room[p1, p2, room_pos, d])
+        for p, r in room_binary:
+            for d in possible_stay[p]:
+                model.Add(max_age[r, d] >= age_group[p]).OnlyEnforceIf(
+                    stay_bin[p, d], room_binary[p, r]
+                )
+                model.Add(min_age[r, d] <= age_group[p]).OnlyEnforceIf(
+                    stay_bin[p, d], room_binary[p, r]
+                )
+        for r, d in max_age_diff:
+            model.Add(max_age_diff[r, d] == max_age[r, d] - min_age[r, d])
 
         # H3
         if VERBOSE:
@@ -841,6 +767,7 @@ class CpSAT(Experiment):
         last_shift = self.instance.get_last_shift_horizon()
 
         # nurses part
+        # TODO: if tw mode, maybe constraint this?
         nurse_r_s = SuperDict()
         nurses__s = (
             nurse_shifts.values_tl()
@@ -907,7 +834,6 @@ class CpSAT(Experiment):
             }
         )
 
-        # but I need to add a dummy room, dummy nurse for that room.
         # for each, p, s:
         nurse_r_s__s_r = (
             nurse_r_s.to_tuplist()
@@ -1181,7 +1107,7 @@ class StopOnMovingAverageImprovement(cp_model.CpSolverSolutionCallback):
 
     def on_solution_callback(self):
         average_improvement = self.__queue.push(self.WallTime(), self.ObjectiveValue())
-        # print(average_improvement, self.__solution_count)
+        print(average_improvement, self.__solution_count)
         if average_improvement < self.__min_imp:
             self.__solution_count += 1
         else:
