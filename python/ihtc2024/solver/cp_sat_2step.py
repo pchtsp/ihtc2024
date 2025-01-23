@@ -33,6 +33,9 @@ class CpSAT2Step(CpSAT):
         CpSAT.__init__(self, instance, solution)
 
     def solve(self, options: dict = None) -> dict:
+        options = dict(options)
+        stop_condition = dict(ma_size=20, min_imp_per_sec=5, length_bad_imp=20)
+        options["stop_condition"] = options.get("stop_condition", stop_condition)
         options["seed"] = options.get("seed", 42)
         rn.seed(options["seed"])
         VERBOSE = options.get("msg", False)

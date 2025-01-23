@@ -70,17 +70,19 @@ def solve_zip(
         if options.get("logPath"):
             options["logPath"] = os.path.join(experiment_dir, options["logPath"])
         my_err_file = os.path.join(experiment_dir, "error.txt")
-        if not os.path.exists(my_err_file):
-            open(my_err_file, "w").close()
         start = timer()
         algo = solver(inst)
+        err_write_mode = "a"
         try:
             result = algo.solve(options)
         except Exception as e:
             result = dict(
                 status=STATUS_UNDEFINED, status_sol=SOLUTION_STATUS_INFEASIBLE
             )
-            with open(my_err_file, "a") as f:
+            if not os.path.exists(my_err_file):
+                err_write_mode = "w"
+
+            with open(my_err_file, err_write_mode) as f:
                 f.write(str(e))
                 f.write(traceback.format_exc())
 
@@ -106,7 +108,10 @@ def solve_zip(
                 report_path = algo.generate_report(report["name"])
                 shutil.move(report_path, dest_path)
             except Exception as e:
-                with open(my_err_file, "a") as f:
+                if not os.path.exists(my_err_file):
+                    err_write_mode = "w"
+
+                with open(my_err_file, err_write_mode) as f:
                     f.write("Report failed")
                     f.write(str(e))
                     f.write(traceback.format_exc())

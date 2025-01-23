@@ -198,11 +198,12 @@ class CpSAT(Experiment):
             solver.parameters.num_search_workers = options["threads"]
         if "fixSolution" in options:
             solver.parameters.fix_variables_to_their_hinted_value = True
-        solution_callback = None
         stop_condition = options.get("stop_condition")
         if stop_condition is None:
+            solution_callback = None
+        elif stop_condition.get("ma_size") is None:
             stop_condition = dict(ma_size=20, min_imp_per_sec=5, length_bad_imp=20)
-        solution_callback = StopOnMovingAverageImprovement(**stop_condition)
+            solution_callback = StopOnMovingAverageImprovement(**stop_condition)
 
         # if options.get("msg", False):
         #     solution_callback = VarArraySolutionPrinter()
