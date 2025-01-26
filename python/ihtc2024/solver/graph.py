@@ -15,6 +15,8 @@ from cornflow_client.constants import (
     STATUS_FEASIBLE,
 )
 
+from typing import Tuple
+
 
 class Graph(Experiment):
     my_graph: GraphTool
@@ -39,6 +41,25 @@ class Graph(Experiment):
         self.my_graph = my_graph
         log.info(f"Graph created: {my_graph.g.num_edges()} edges")
 
+    def initialize_best(self):
+        if self.solution is not None:
+            checks = self.check_solution()
+            sum_errors = self.get_sum_errors(checks)
+            return sum_errors, self.get_objective(), self.solution.copy()
+        return np.Inf, np.Inf, None
+
+    def update_best_solution(
+        self,
+        sum_errors: int,
+        best_errors: int,
+        objective: float,
+        best_obj: float,
+        best_sol: Solution,
+    ) -> Tuple[int, float, Solution]:
+        if (sum_errors, objective) < (best_errors, best_obj):
+            return sum_errors, objective, self.solution.copy()
+        return best_errors, best_obj, best_sol
+
     def solve(self, options: dict = None) -> dict:
         self.set_log_config(options)
         time_init = self.init
@@ -54,21 +75,13 @@ class Graph(Experiment):
                 get_start_margin(v),
             )
         )
-        if self.solution is not None:
-            # if we already have a solution
-            # we only pass once
-            best_sol = self.solution.copy()
-            best_obj = self.get_objective()
+        best_errors, best_obj, best_sol = self.initialize_best()
+        if best_errors == 0:
             num_passes = 1
         else:
-            # if we're building a new solution,
-            # we do two tours
-            best_sol = None
-            best_obj = np.Inf
             num_passes = 2
 
         time_limit = options.get("timeLimit", 60)
-        sum_errors = 0
         for i in range(num_passes):
             if i == 1:
                 # if we haven't reached feasibility, we leave
@@ -104,9 +117,9 @@ class Graph(Experiment):
                 objective = self.get_objective()
                 errors = self.check_solution()
                 sum_errors = self.get_sum_errors(errors)
-                if sum_errors == 0 and objective < best_obj:
-                    best_obj = objective
-                    best_sol = self.solution.copy()
+                best_errors, best_obj, best_sol = self.update_best_solution(
+                    sum_errors, best_errors, objective, best_obj, best_sol
+                )
                 log.debug(f"current={objective}; errors={sum_errors}; best={best_obj}")
 
         # if we have some solution in best_sol, we store it.

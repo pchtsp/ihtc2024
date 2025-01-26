@@ -512,6 +512,8 @@ class GraphTool(object):
             my_shift = day * 3
             for op in ops:
                 my_theater = self._equiv_theater[op]
+                # if the surgeon is already working in that theater
+                # in that day we do not count it
                 relevant_node = (
                     # day assigned
                     (shift_array == my_shift)

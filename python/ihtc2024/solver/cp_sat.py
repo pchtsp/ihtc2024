@@ -49,13 +49,21 @@ class CpSAT(Experiment):
 
     def warm_start(self, model, my_vars: my_vars_type):
         patient_assignments = self.solution.get_patient_assignment()
+        ob_raw = self.get_objective_terms_raw()
         rooms = self.rooms_id
         nurses = self.nurses_id
         admission_bin = my_vars["admission_bin"]
         room_binary = my_vars["room_binary"]
         theater_bin = my_vars["theater_bin"]
+        open__ot_d = my_vars["open__ot_d"]
+        max_age_diff = my_vars["max_age_diff"]
+        worked__s_ot_d = my_vars["worked__s_ot_d"]
 
         nurse_bin__n_r_s = my_vars.get("nurse_bin__n_r_s")
+        nurse_overwork__n_s = my_vars.get("nurse_overwork__n_s")
+        nurse_patient__n_p = my_vars.get("nurse_patient__n_p")
+        skill_diff__p_s = my_vars.get("skill_diff__p_s")
+
         model.ClearHints()
         for v in patient_assignments.values():
             p = v["id"]
@@ -66,6 +74,17 @@ class CpSAT(Experiment):
             model.AddHint(room_binary[p, r], 1)
             model.AddHint(theater_bin[p, t], 1)
 
+        for ot, d in ob_raw["open_operating_theater"]:
+            model.AddHint(open__ot_d[ot, d], 1)
+
+        for (s, d), ots in ob_raw["surgeon_transfer"].items():
+            for ot in ots:
+                model.AddHint(worked__s_ot_d[s, ot, d], 1)
+
+        for (r, d), (_min, _max) in ob_raw["room_mixed_age"].items():
+            r2 = rooms[r]["pos"]
+            model.AddHint(max_age_diff[r2, d], _max - _min)
+
         if nurse_bin__n_r_s:
             nurse_assignments = self.get_nurse_assignment_shift()
             for v in nurse_assignments.values():
@@ -73,6 +92,24 @@ class CpSAT(Experiment):
                 n = nurses[v["id"]]["pos"]
                 s = v["shift_pos"]
                 model.AddHint(nurse_bin__n_r_s[n, r, s], 1)
+
+        if skill_diff__p_s:
+            for (p, s), diff in ob_raw["room_nurse_skill"].items():
+                model.AddHint(skill_diff__p_s[p, s], diff)
+
+        if nurse_patient__n_p:
+            for p, _nurses in ob_raw["continuity_of_care"].items():
+                for n in _nurses:
+                    n2 = nurses[n]["pos"]
+                    model.AddHint(nurse_patient__n_p[n2, p], 1)
+
+        if nurse_overwork__n_s:
+            for (n, s), ow in ob_raw["nurse_eccessive_workload"].items():
+                n2 = nurses[n]["pos"]
+                if ow < 0:
+                    model.AddHint(nurse_overwork__n_s[n2, s], 0)
+                else:
+                    model.AddHint(nurse_overwork__n_s[n2, s], ow)
 
     def get_objective_function(self, model, my_vars):
 
@@ -100,7 +137,8 @@ class CpSAT(Experiment):
                 + my_sum(nurse_overwork__n_s.values())
                 * weights["nurse_eccessive_workload"]
             )
-
+        first = patients.get_property("surgery_release_day")
+        optional = patients.vfilter(lambda v: not v["mandatory"]).keys()
         model.Minimize(
             # S1
             my_sum(max_age_diff.values()) * weights["room_mixed_age"]
@@ -111,75 +149,66 @@ class CpSAT(Experiment):
             # S6
             my_sum(worked__s_ot_d.values()) * weights["surgeon_transfer"]
             # S7
-            + my_sum(admission_bin.kvapply(lambda k, v: v * k[1]).values())
+            + my_sum(
+                admission_bin.kvapply(lambda k, v: v * (k[1] - first[k[0]])).values()
+            )
             * weights["patient_delay"]
             # S8
-            - my_sum(
-                admission_bin.kfilter(
-                    lambda k: not patients[k[0]]["mandatory"]
-                ).values()
-            )
+            + len(optional) * weights["unscheduled_optional"]
+            - my_sum(admission_bin.kfilter(lambda k: k[0] in optional).values())
             * weights["unscheduled_optional"]
             + nurses_part
         )
         return None
 
     def solve(self, options: dict = None) -> dict:
+        options = dict(options)
         options["seed"] = options.get("seed", 42)
         rn.seed(options["seed"])
         VERBOSE = options.get("msg", False)
         TIME_WINDOW = options.get("timeWindow")
         TIME_LIMIT = options.get("timeLimit", 100)
         WARM_START = options.get("warmStart", False)
-        MAX_SAMPLE_OPTIONS = options.get("maxSample", [7, 10, None])
-        if TIME_WINDOW:
-            MAX_SAMPLE_OPTIONS = [None]
+        MAX_SAMPLE_OPTIONS = options.get("maxSample", [None])
         if VERBOSE:
             self.print_time("Building of model starts")
 
         solver = cp_model.CpSolver()
-        status = cp_model.UNKNOWN
-        for max_sample in MAX_SAMPLE_OPTIONS:
-            if VERBOSE:
-                self.print_time(f"Phase1: maxSample: {max_sample}")
-            my_options_1 = dict(options)
-            my_options_1["maxSample"] = max_sample
-            my_options_1["timeLimit"] = min(TIME_LIMIT, 500)
-            if "logPath" in my_options_1:
-                name, ext = os.path.splitext(my_options_1["logPath"])
-                my_options_1["logPath"] = name + "_pre" + ext
+        # for max_sample in MAX_SAMPLE_OPTIONS:
+        options["maxSample"] = MAX_SAMPLE_OPTIONS[0]
+        if VERBOSE:
+            self.print_time(f"Phase1: maxSample: {options["maxSample"]}")
 
-            model = cp_model.CpModel()
-            my_vars = self.add_non_nurse_constraints(model, my_options_1)
-            my_vars = self.add_nurse_constraints2(model, my_vars)
-            # my_vars = self.add_nurse_constraints(model, my_vars)
-
-            if VERBOSE:
-                self.print_time("Objective function")
-            self.get_objective_function(model, my_vars)
-            if self.solution and (TIME_WINDOW or WARM_START):
-                self.warm_start(model, my_vars)
-            status = self.call_solver(model, solver, my_options_1)
-            if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-                # as soon as we find a feasible solution, we exit
-                break
-
+        model = cp_model.CpModel()
+        if VERBOSE:
+            self.print_time("Non nurse constraints")
+        my_vars = self.add_non_nurse_constraints(model, options)
+        if VERBOSE:
+            self.print_time("Nurse constraints")
+        my_vars = self.add_nurse_constraints2(model, my_vars)
+        if VERBOSE:
+            self.print_time("Objective function")
+        self.get_objective_function(model, my_vars)
+        if self.solution and (TIME_WINDOW or WARM_START):
+            self.warm_start(model, my_vars)
+        status = self.call_solver(model, solver, options)
         if options.get("dump_vars"):
             self.dump_vars_model(model, solver, my_vars)
 
         if options.get("msg", False):
             print(f"Model finished with status {status_conv.get(status)}")
 
-            if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-                if VERBOSE:
-                    print("No solution was found")
-                return dict(
-                    status=status_conv.get(status),
-                    status_sol=SOLUTION_STATUS_INFEASIBLE,
-                )
+        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+            if VERBOSE:
+                print("No solution was found")
+            return dict(
+                status=status_conv.get(status),
+                status_sol=SOLUTION_STATUS_INFEASIBLE,
+            )
 
         sol_data = self.my_vars_to_solution(solver, my_vars)
         self.solution = Solution.from_dict(sol_data)
+        self.get_objective_function(model, my_vars)
 
         return dict(status=status_conv.get(status), status_sol=SOLUTION_STATUS_FEASIBLE)
 
@@ -201,8 +230,9 @@ class CpSAT(Experiment):
         stop_condition = options.get("stop_condition")
         if stop_condition is None:
             solution_callback = None
-        elif stop_condition.get("ma_size") is None:
-            stop_condition = dict(ma_size=20, min_imp_per_sec=5, length_bad_imp=20)
+        else:
+            if stop_condition.get("ma_size") is None:
+                stop_condition = dict(ma_size=20, min_imp_per_sec=5, length_bad_imp=20)
             solution_callback = StopOnMovingAverageImprovement(**stop_condition)
 
         # if options.get("msg", False):
@@ -238,9 +268,13 @@ class CpSAT(Experiment):
 
         possible_start = possible_start.kvapply(sample_patient)
         available_rooms__p = available_rooms__p.vapply(sample_range)
+        # TODO: if a solution is available, we're sure to add all current assignments
+        #  as possibilities
         return possible_start, available_rooms__p
 
-    def tw_limit_starts_rooms(self, possible_start, available_rooms__p, TIME_WINDOW):
+    def tw_limit_starts_rooms(
+        self, possible_start, available_rooms__p, available_ot__p, TIME_WINDOW
+    ):
         patients = self.instance.get_patients()
         size = TIME_WINDOW.get("size")
         start = TIME_WINDOW.get("start")
@@ -255,7 +289,25 @@ class CpSAT(Experiment):
             lambda v: v["admission_day"] in window
         ).keys_tl()
 
-        def fix_variable(patient, day_range, ref):
+        def intersect_range(x, y):
+            if not len(x) or not len(y):
+                return []
+            return range(max(x[0], y[0]), min(x[-1], y[-1]) + 1)
+            # return list(set(day_range) & set(window))
+
+        def fix_starts(patient, day_range):
+            # patient is occupant
+            if patient not in patients:
+                return day_range
+            # the passenger is inside the tw
+            # or the patient is not scheduled
+            if patient in patients_in_tw or patient not in assignments:
+                return intersect_range(day_range, window)
+
+            # the patient's possibilities are equal to the previous solution
+            return [assignments[patient]["admission_day"]]
+
+        def fix_ref(patient, room_range, ref):
             # the passenger is inside the tw
             # or the patient is not scheduled
             # or patient is occupant
@@ -265,14 +317,22 @@ class CpSAT(Experiment):
                 or patient not in patients
             ):
                 # we do not fix
-                return day_range
+                return room_range
 
             # the patient's possibilities are equal to the previous solution
             return [assignments[patient][ref]]
 
-        possible_start = possible_start.kvapply(fix_variable, ref="admission_day")
-        available_rooms__p = available_rooms__p.kvapply(fix_variable, ref="room")
-        return possible_start, available_rooms__p
+        # we need to be sure that a patient that cannot start in the time window,
+        # cannot be assigned a room:
+        new_possible_start = possible_start.kvapply(fix_starts).vfilter(lambda v: v)
+        new_available_rooms__p = available_rooms__p.kvapply(fix_ref, ref="room").filter(
+            new_possible_start
+        )
+        new_available_ot__p = available_ot__p.kvapply(
+            fix_ref, ref="operating_theater"
+        ).filter(new_possible_start)
+
+        return new_possible_start, new_available_rooms__p, new_available_ot__p
 
     def add_non_nurse_constraints(
         self, model: cp_model.CpModel, options=None
@@ -281,9 +341,17 @@ class CpSAT(Experiment):
         VERBOSE = options.get("msg", False)
         if VERBOSE:
             self.print_time("Getting parameters")
-        patients = self.instance.get_patients()
+
         possible_start = self.instance.get_patient_occupants_available_starts()
         available_rooms__p = self.instance.get_patients_occupants_available_rooms()
+        operation_theaters = self.instance.get_operatingtheaters().copy_deep()
+        for pos, _theater in enumerate(operation_theaters.values()):
+            _theater["pos"] = pos
+
+        available_ot__p = SuperDict(
+            {p: operation_theaters.keys_tl() for p in possible_start}
+        )
+
         MAX_SAMPLE = options.get("maxSample")
 
         # here I will edit my_vars to fix everything
@@ -292,11 +360,10 @@ class CpSAT(Experiment):
 
         TIME_WINDOW = options.get("timeWindow")
         if TIME_WINDOW is not None and self.solution is not None:
-            if MAX_SAMPLE and VERBOSE:
-                self.print_time("We deactivate sampling because of time window")
-            MAX_SAMPLE = None
-            possible_start, available_rooms__p = self.tw_limit_starts_rooms(
-                possible_start, available_rooms__p, TIME_WINDOW
+            possible_start, available_rooms__p, available_ot__p = (
+                self.tw_limit_starts_rooms(
+                    possible_start, available_rooms__p, available_ot__p, TIME_WINDOW
+                )
             )
 
         # we sample the possible starts and available rooms per patient
@@ -305,12 +372,13 @@ class CpSAT(Experiment):
                 possible_start, available_rooms__p, MAX_SAMPLE
             )
 
-        operation_theaters = self.instance.get_operatingtheaters().copy_deep()
-        patients_occupants = self.instance.get_patients_occupants()
-        occupants = self.instance.get_occupants()
+        patients_occupants = self.instance.get_patients_occupants().filter(
+            possible_start
+        )
 
-        for pos, _theater in enumerate(operation_theaters.values()):
-            _theater["pos"] = pos
+        occupants = patients_occupants.vfilter(lambda v: v["is_occupant"])
+        patients = patients_occupants.vfilter(lambda v: not v["is_occupant"])
+
         surgery_duration = patients.get_property("surgery_duration")
         ot_cap = (
             self.instance.get_operatingtheater_capacity()
@@ -369,8 +437,8 @@ class CpSAT(Experiment):
         theater_bin = SuperDict(
             {
                 (p, ot): model.NewBoolVar(f"theater_bin_{p}_{ot}")
-                for p in patients
-                for ot in operation_theaters
+                for p, ots in available_ot__p.items()
+                for ot in ots
             }
         )
 
@@ -396,10 +464,9 @@ class CpSAT(Experiment):
         domain__ot_p_d = TupList(
             (ot, p, d)
             for p, days in possible_start.items()
-            for ot in operation_theaters
             for d in days
             if p in patients
-            if (p, ot) in theater_bin
+            for ot in available_ot__p[p]
             # there needs to be enough available capacity in the operating room
             if surgery_duration[p] <= ot_cap[ot][d]
             # and for the surgeon
@@ -468,7 +535,7 @@ class CpSAT(Experiment):
         # then admission or theater needs to be 0
         domain__ot_p_d_set = set(domain__ot_p_d)
         for (p, d), v in admission_bin.items():
-            for ot in operation_theaters:
+            for ot in available_ot__p[p]:
                 if (ot, p, d) not in domain__ot_p_d_set:
                     model.Add(admission_bin[p, d] + theater_bin[p, ot] <= 1)
 
@@ -539,25 +606,20 @@ class CpSAT(Experiment):
         min_ag, max_ag = min(all_age_groups), max(all_age_groups)
         num_ages = len(set(age_group.values_tl()))
         all_rooms = room_binary.keys_tl().take(1).unique()
-        max_age_diff = SuperDict(
-            {
-                (r, d): model.NewIntVar(0, num_ages - 1, name=f"max_age_diff_{r}_{d}")
-                for r in all_rooms
-                for d in range(horizon_days_size)
-            }
-        )
-        max_age = SuperDict(
-            {
-                (r, d): model.NewIntVar(min_ag, max_ag, name=f"max_age_{r}_{d}")
-                for r, d in max_age_diff
-            }
-        )
-        min_age = SuperDict(
-            {
-                (r, d): model.NewIntVar(min_ag, max_ag, name=f"min_age_{r}_{d}")
-                for r, d in max_age_diff
-            }
-        )
+
+        max_age_diff = SuperDict()
+        min_age = SuperDict()
+        max_age = SuperDict()
+
+        for r in all_rooms:
+            for d in range(horizon_days_size):
+                __dif = model.NewIntVar(0, num_ages - 1, name=f"max_age_diff_{r}_{d}")
+                __min = model.NewIntVar(min_ag, max_ag, name=f"min_age_{r}_{d}")
+                __max = model.NewIntVar(min_ag, max_ag, name=f"max_age_{r}_{d}")
+                max_age_diff[r, d] = __dif
+                min_age[r, d] = __min
+                max_age[r, d] = __max
+
         age_group = patients_occupants.get_property("age_group").vapply(
             lambda v: agegroups[v]["pos"]
         )
@@ -611,7 +673,7 @@ class CpSAT(Experiment):
         for p, patient in patients.items():
             all_admissions = my_sum([admission_bin[p, d] for d in possible_start[p]])
             all_rooms = my_sum([room_binary[p, r] for r in available_rooms__p[p]])
-            all_theaters = my_sum([theater_bin[p, ot] for ot in operation_theaters])
+            all_theaters = my_sum([theater_bin[p, ot] for ot in available_ot__p[p]])
             if patient["mandatory"]:
                 model.Add(all_admissions == 1)
                 model.Add(all_rooms == 1)

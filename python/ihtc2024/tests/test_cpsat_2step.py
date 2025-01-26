@@ -15,7 +15,7 @@ from .tests import BaseTestInstance
 class TestInstance(BaseTestInstance):
 
     def test_solve_toy_cpsat(self):
-        my_experim = solvers["cpsat"](self.instance, self.solution)
+        my_experim = solvers["cpsat2step"](self.instance, self.solution)
         my_experim.solve(
             dict(
                 threads=8,

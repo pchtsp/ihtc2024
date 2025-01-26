@@ -348,14 +348,18 @@ class Experiment(ExperimentCore):
     def get_room_usage(self):
         # includes patients and occupants
         result = TupList()
+        horizon_size = self.instance.get_horizon_size_days()
         p_length = self.instance.get_patients_occupants().get_property("length_of_stay")
         p_assignment = self.get_all_assignments()
         for patient, assignment in p_assignment.items():
             for pos_d in range(p_length[patient]):
+                day = assignment["admission_day"] + pos_d
+                if day >= horizon_size:
+                    continue
                 elem = SuperDict(
                     patient=patient,
                     room=assignment["room"],
-                    day=assignment["admission_day"] + pos_d,
+                    day=day,
                 )
                 result.append(elem)
 

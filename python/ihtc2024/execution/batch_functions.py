@@ -102,7 +102,7 @@ def solve_zip(
             algo.solution.to_json(os.path.join(experiment_dir, "output.json"))
         # if report active, try to run it.
         report = options.get("report")
-        if report:
+        if report and algo.solution is not None:
             try:
                 dest_path = os.path.join(experiment_dir, "report.html")
                 report_path = algo.generate_report(report["name"])
@@ -205,20 +205,3 @@ def my_benchmark(
 
 def my_table(path_to_dir, run_name):
     return get_table(path=os.path.join(path_to_dir, run_name), is_zip_file=False)
-
-
-def rename_files(path_to_dir):
-    run_name = "reference"
-    my_path = os.path.join(path_to_dir, run_name)
-    for root, dirs, files in os.walk(my_path):
-        for file in files:
-            if file != "output.json":
-                continue
-            full_path = os.path.join(root, file)
-            new_path = os.path.join(root, "output_old.json")
-            try:
-                my_solution = Solution.from_ihtc_json(full_path)
-                os.rename(full_path, new_path)
-                my_solution.to_json(full_path)
-            except:
-                pass

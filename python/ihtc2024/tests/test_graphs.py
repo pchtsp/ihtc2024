@@ -18,6 +18,16 @@ from .tests import BaseTestInstance
 
 class TestInstance(BaseTestInstance):
 
+    def test_solve_toy_graph(self):
+        my_experim = solvers["graph"](self.instance)
+        my_experim.solve(dict(threads=8, timeLimit=100, msg=True))
+        checks = my_experim.check_solution()
+
+        self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
+        objective = my_experim.get_objective()
+        print(objective)
+        my_experim.run_validator(PATH_TO_VALIDATOR)
+
     def test_group_nurses(self):
         nurse_shifts = self.instance.get_nurse_shift()
         groups = self.instance.get_nurse_groups(nurse_shifts, 0.05, 0.015)
@@ -36,7 +46,6 @@ class TestInstance(BaseTestInstance):
         # nurse_shifts.kfilter(lambda k: k[0]=='n016').vapply(lambda v: v['shift_pos']).values_tl()
         # nurse_shifts.kfilter(lambda k: k[0]=='n063').vapply(lambda v: v['shift_pos']).values_tl()
         groups.vapply(lambda v: [v]).list_reverse()
-
 
     def test_build_graph(self):
         my_experim = self.get_solved_experiment("test01.json")

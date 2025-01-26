@@ -87,14 +87,14 @@ class CpSAT2Step(CpSAT):
         # here we warm start the values of non-nurse variables
         self.warm_start(model, my_vars)
         # here we fix the values of admissions, room assignments, theater and stay
-        for var_name in ["admission_bin", "room_binary", "theater_bin", "stay_bin"]:
+        for var_name in ["admission_bin", "room_binary", "theater_bin"]:
             my_vars[var_name] = my_vars[var_name].vfilter(solver.Value)
 
         if VERBOSE:
             self.print_time("Nurse constraints")
 
         # we add the nurse constraints
-        my_vars = self.add_nurse_constraints(model, my_vars)
+        my_vars = self.add_nurse_constraints2(model, my_vars)
         if VERBOSE:
             self.print_time("Objective function constraints")
 
