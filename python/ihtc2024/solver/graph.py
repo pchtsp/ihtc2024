@@ -60,6 +60,21 @@ class Graph(Experiment):
             return sum_errors, objective, self.solution.copy()
         return best_errors, best_obj, best_sol
 
+    def restart_to_best(
+        self,
+        sum_errors: int,
+        best_errors: int,
+        objective: float,
+        best_obj: float,
+        best_sol: Solution,
+    ):
+        if best_sol is None:
+            return sum_errors, objective
+        if (sum_errors, objective) > (best_errors, best_obj):
+            self.solution = best_sol.copy()
+            return best_errors, best_obj
+        return sum_errors, objective
+
     def solve(self, options: dict = None) -> dict:
         self.set_log_config(options)
         time_init = self.init

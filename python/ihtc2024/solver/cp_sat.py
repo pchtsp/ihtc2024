@@ -716,7 +716,12 @@ class CpSAT(Experiment):
         admission_bin = my_vars["admission_bin"]
         room_binary = my_vars["room_binary"]
         rooms__p = room_binary.keys_tl().to_dict(1)
-        MaxWL__p = workload__p_posShift.to_tuplist().to_dict(2, indices=0).vapply(max)
+        Options_wl__p = (
+            workload__p_posShift.to_tuplist()
+            .to_dict(2, indices=0)
+            .vapply(lambda v: v.unique2() + [0])
+        )
+        MaxWL__p = Options_wl__p.vapply(max)
 
         # TODO: if tw mode, maybe constraint this?
         nurses__s = (
@@ -769,14 +774,16 @@ class CpSAT(Experiment):
                 0, max_skill_level, name=f"skill_diff_{k[0]}_{k[1]}"
             )
         )
+
         nurse_overwork__n_s = domain_n_p_s__n_s.vapply(
             lambda _patients: sum(MaxWL__p[p] for p in _patients)
         ).kvapply(lambda k, v: model.NewIntVar(0, v, name=f"overwork_{k[0]}_{k[1]}"))
 
         patient_nurse_workload__n_p_s = domain_n_p_s.to_dict(None).vapply(
             lambda v: (
-                model.NewIntVar(
-                    0, MaxWL__p[v[1]], name=f"workload_{v[0]}_{v[1]}_{v[2]}"
+                model.NewIntVarFromDomain(
+                    cp_model.Domain.FromValues(values=Options_wl__p[v[1]]),
+                    name=f"workload_{v[0]}_{v[1]}_{v[2]}",
                 )
                 if not patients_occupants[v[1]]["is_occupant"]
                 else workload__p_posShift[v[1], v[2]]

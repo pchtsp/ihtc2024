@@ -22,6 +22,13 @@ class TestInstance(BaseTestInstance):
         print(objective)
         my_experim.run_validator(PATH_TO_VALIDATOR)
 
+    def test_solve_test_instance_warmstart(self):
+        my_experim_solved = self.get_solved_experiment("test04.json")
+        my_experim = solvers["graph_tw"](
+            my_experim_solved.instance, my_experim_solved.solution
+        )
+        my_experim.solve(dict(threads=8, timeLimit=1000, msg=True))
+
     def test_solve_test_instance_1(self):
         my_experim_solved = self.get_solved_experiment("test04.json")
         print(my_experim_solved.get_objective())

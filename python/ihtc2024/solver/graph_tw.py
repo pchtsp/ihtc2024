@@ -79,6 +79,9 @@ class GraphTW(CpSAT, Graph):
             best_errors, best_obj, best_sol = self.update_best_solution(
                 sum_errors, best_errors, objective, best_obj, best_sol
             )
+            sum_errors, objective = self.restart_to_best(
+                sum_errors, best_errors, objective, best_obj, best_sol
+            )
             log.debug(f"current={objective}; errors={sum_errors}; best={best_obj}")
 
             if self.elapsed_time() >= TIME_LIMIT:
