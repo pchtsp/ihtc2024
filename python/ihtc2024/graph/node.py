@@ -35,7 +35,8 @@ class Node(object):
     room: str | None
     theater: str | None
     pos_shift: int
-    hist_nurses: Dict[str, int] | None
+    code: str
+    hash: int
 
     def __init__(
         self,
@@ -46,7 +47,6 @@ class Node(object):
         room: str | None,
         nurse: str | None,
         type: int,
-        hist_nurses: Dict[str, int] | None,
     ):
         self.instance = instance
         self.shift = shift
@@ -59,17 +59,11 @@ class Node(object):
         self.room = room
         self.nurse = nurse
         self.type = type
-        # we make a copy of the nurses assigned to the patient
-        if hist_nurses is not None:
-            self.hist_nurses = hist_nurses.copy()
-        else:
-            self.hist_nurses = hist_nurses
-        # we accumulate the nurses assigned to the patient
-        # if type == TYPE.NURSE:
-        #     self.hist_nurses[nurse] = 1
-        data = self.get_data()
-        self.jsondump = json.dumps(data, option=json.OPT_SORT_KEYS)
-        self.hash = hash(self.jsondump)
+
+        # data = self.get_data()
+        # self.code = json.dumps(data, option=json.OPT_SORT_KEYS)
+        self.code = self.get_code()
+        self.hash = hash(self.code)
 
         # backups / cache
         self.__nurses__s = None
@@ -81,10 +75,7 @@ class Node(object):
         # theater + room + first shift => (shift-> nurse)
         # pos_shift = self.pos_shift if self.pos_shift >= 0 else 0
         if self.type == TYPE.NURSE:
-            nurses = list(self.hist_nurses.keys())
-            assignment = (
-                f"nu:{self.shift}/{self.pos_shift}->{self.nurse}@{self.room}{nurses}"
-            )
+            assignment = f"nu:{self.shift}/{self.pos_shift}->{self.nurse}@{self.room}"
         elif self.type == TYPE.THEATER:
             assignment = f"th:{self.theater}:{self.shift}"
         elif self.type == TYPE.ROOM:
@@ -102,7 +93,7 @@ class Node(object):
         return self.hash
 
     def __eq__(self, other):
-        return self.jsondump == other.jsondump
+        return self.code == other.code
 
     def get_nurses_by_shift(self):
         if self.__nurses__s is None:
@@ -133,6 +124,9 @@ class Node(object):
             )
         return self.__lengths_of_stay
 
+    def get_code(self) -> str:
+        return f"{self.shift}_{self.pos_shift}_{self.theater}_{self.room}_{self.nurse}_{self.type}"
+
     def get_data(self) -> dict:
         return {
             "shift": self.shift,
@@ -141,13 +135,11 @@ class Node(object):
             "room": self.room,
             "nurse": self.nurse,
             "type": self.type,
-            "hist_nurses": self.hist_nurses,
         }
 
     def copy(self):
         return Node.from_node(
             self,
-            hist_nurses=dict(self.hist_nurses),
             instance=self.instance.copy(),
             keep_cache=False,
         )
@@ -167,7 +159,6 @@ class Node(object):
             room=kwargs.get("room", node.room),
             nurse=kwargs.get("nurse", node.nurse),
             type=kwargs.get("type", node.type),
-            hist_nurses=kwargs.get("hist_nurses", node.hist_nurses),
             instance=kwargs.get("instance", node.instance),
         )
         if keep_cache:
@@ -188,8 +179,6 @@ class Node(object):
             new_shift = self.shift
             pos_shift = 0
         my_nurses = nurses__s[new_shift]
-        if len(self.hist_nurses) == max_nurses:
-            my_nurses &= self.hist_nurses.keys()
         if len(my_nurses) == 0:
             my_nurses = [list(nurses__s[new_shift])[0]]
         return [
@@ -341,7 +330,6 @@ def get_source_node(instance):
         room=None,
         nurse=None,
         type=TYPE.DUMMY,
-        hist_nurses=dict(),
     )
 
 
@@ -355,7 +343,6 @@ def get_sink_node(instance):
         room=None,
         nurse=None,
         type=TYPE.DUMMY,
-        hist_nurses=None,
     )
 
 
@@ -368,7 +355,6 @@ def get_theater_occupant(instance):
         room=None,
         nurse=None,
         type=TYPE.THEATER,
-        hist_nurses=dict(),
     )
 
 
@@ -437,6 +423,7 @@ def nodes_per_patient(
     for k, v in _by_length.items():
         v |= _by_pos[-1]
 
+    banrooms_p = instance.get_patient_room_ban().keys_tl().to_dict(1)
     # here we've done all the preprocessing.
     # we can now, iterate (or parallelize) by patient
     prep_data = {
@@ -447,6 +434,7 @@ def nodes_per_patient(
         "_by_pos": _by_pos,
         "day_range": day_range,
         "length_p": length_p,
+        "banrooms_p": banrooms_p,
     }
     my_nodes_ady = SuperDict()
     for p, patient_info in patients.items():
@@ -469,7 +457,6 @@ def nodes_per_patient(
 
 def get_nodes_ady_per_patient(
     instance: Instance,
-    # nodes_ady: SuperDict[Node, set[Node]],
     patient_info: SuperDict,
     prep_data: dict[str, any],
 ) -> set[Node]:
@@ -483,6 +470,7 @@ def get_nodes_ady_per_patient(
     _by_pos = prep_data["_by_pos"]
     day_range = prep_data["day_range"]
     length_p = prep_data["length_p"]
+    banrooms_p = prep_data["banrooms_p"]
 
     source = get_source_node(instance)
     theater_occupant = get_theater_occupant(instance)
@@ -510,12 +498,7 @@ def get_nodes_ady_per_patient(
         my_nodes &= possible
     else:
         # if not occupant, we take out the ban rooms for the patient
-        ban_rooms = (
-            instance.get_patient_room_ban()
-            .keys_tl()
-            .to_dict(1)
-            .get(patient_info["id"], [])
-        )
+        ban_rooms = banrooms_p.get(patient_info["id"], [])
         if len(ban_rooms) > 0:
             forbidden = set.union(*[_by_room[r] for r in ban_rooms])
             my_nodes -= forbidden
@@ -526,7 +509,11 @@ def get_nodes_ady_per_patient(
         my_nodes.add(theater_occupant)
     else:
         # if patient, we take out the None (-1) option
-        my_nodes -= {theater_occupant}
+        try:
+            my_nodes.remove(theater_occupant)
+        except KeyError:
+            pass
+        # my_nodes -= {theater_occupant}
 
     # also, length_of_day determines the number of shifts
     # we delete nodes that go over the length of stay
@@ -534,7 +521,8 @@ def get_nodes_ady_per_patient(
 
     # we make sure that source is always available:
     #  sink has no edges so it's not on the list
-    my_nodes |= {source}
+    my_nodes.add(source)
+    # my_nodes |= {source}
 
     # # we now get the arcs to edit them
     # my_nodes_ady = nodes_ady.filter(my_nodes)

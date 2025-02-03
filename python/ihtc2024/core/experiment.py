@@ -237,7 +237,9 @@ class Experiment(ExperimentCore):
         # S3
         continuity_err = (
             patient_solution_details.values_tl()
-            .to_dict("nurse", indices="id")
+            .take(["id", "nurse"])
+            .unique()
+            .to_dict(1)
             .vapply(set)
         )
 

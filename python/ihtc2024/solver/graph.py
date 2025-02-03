@@ -25,7 +25,9 @@ class Graph(Experiment):
     def get_sum_errors(errors):
         return sum(errors.vapply(len).values())
 
-    def __init__(self, instance: Instance, solution: Solution = None):
+    def __init__(
+        self, instance: Instance, solution: Solution = None, group_nurses: bool = True
+    ):
         Experiment.__init__(self, instance, solution)
         self.init = time.time()
         log.info(f"start creating nodes")
@@ -37,6 +39,8 @@ class Graph(Experiment):
             instance=self.instance,
             nodes_ady=nodes_ady,
             nodes_ady_p=my_nodes__p,
+            group_nurses=group_nurses,
+            patient_forbidden=True,
         )
         self.my_graph = my_graph
         log.info(f"Graph created: {my_graph.g.num_edges()} edges")
@@ -95,7 +99,7 @@ class Graph(Experiment):
             num_passes = 1
         else:
             num_passes = 2
-
+        sum_errors = best_errors
         time_limit = options.get("timeLimit", 60)
         for i in range(num_passes):
             if i == 1:
@@ -118,9 +122,7 @@ class Graph(Experiment):
                     **self.calculate_coupling_checks(),
                 }
 
-                pattern = self.my_graph.nodes_to_pattern(
-                    None, None, errors, None, patient_id, self
-                )
+                pattern = self.my_graph.nodes_to_pattern(errors, patient_id, self)
                 success = self.apply_pattern(pattern, patient_info)
                 if not success:
                     log.debug(f"Pattern not applied")

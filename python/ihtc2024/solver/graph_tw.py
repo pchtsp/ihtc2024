@@ -1,11 +1,11 @@
 import time
-import numpy as np
 import statistics as stats
+import random as rn
 from .graph import Graph
 
-# from .cp_sat import CpSAT
+from .cp_sat import CpSAT
 
-from .cp_sat_2step import CpSAT2Step as CpSAT
+from .cp_sat_2step import CpSAT2Step as CpSAT2
 from .. import Solution, Instance
 
 from cornflow_client.constants import (
@@ -17,7 +17,7 @@ from cornflow_client.constants import (
 import logging as log
 
 
-class GraphTW(CpSAT, Graph):
+class GraphTW(CpSAT2, Graph):
 
     def __init__(self, instance: Instance, solution: Solution = None):
         CpSAT.__init__(self, instance, solution)
@@ -30,6 +30,7 @@ class GraphTW(CpSAT, Graph):
         TIME_LIMIT = options.get("timeLimit", 60)
         VERBOSE = options.get("msg", False)
         best_errors, best_obj, best_sol = self.initialize_best()
+        run = 0
         while True:
             # we found a good feasible solution with Graph:
             status = Graph.solve(self, options)
@@ -42,7 +43,20 @@ class GraphTW(CpSAT, Graph):
             )
             if self.elapsed_time() >= TIME_LIMIT:
                 break
+            if run % 2 == 0:
+                solver = CpSAT2
+                size = rn.randint(10, 20)
+                maxSampleN = 15
+                maxSample = [15]
+            else:
+                solver = CpSAT
+                size = rn.randint(5, 10)
+                maxSampleN = 7
+                maxSample = [7]
             if errors["h5"]:
+                # we favor feasibility hear, so we use CpSAT2 and a large time window
+                solver = CpSAT2
+                size = rn.randint(10, 20)
                 pos_starts = (
                     self.instance.get_patient_occupants_available_starts()
                     .filter(errors["h5"])
@@ -52,23 +66,24 @@ class GraphTW(CpSAT, Graph):
                     .sorted()
                 )
                 start = stats.median(pos_starts)
-                size = 10
                 tw = dict(size=size, start=round(start - size / 2))
             else:
-                tw = dict(size=10)
+                tw = dict(size=size)
             my_options = dict(options)
-            stop_condition = dict(ma_size=10, min_imp_per_sec=10, length_bad_imp=10)
+            stop_condition = dict(ma_size=10, min_imp_per_sec=5, length_bad_imp=10)
             my_options.update(
                 dict(
-                    maxSample=[None],
+                    maxSample=maxSample,
+                    maxSampleN=maxSampleN,
                     timeWindow=tw,
-                    timeLimit=min(300, TIME_LIMIT - self.elapsed_time()),
+                    timeLimit=min(400, TIME_LIMIT - self.elapsed_time()),
                     stop_condition=stop_condition,
                     warmStart=True,
                 )
             )
             curr_solution = self.solution.copy()
-            status = CpSAT.solve(self, my_options)
+            solver.solve(self, my_options)
+            # status = CpSAT.solve(self, my_options)
             # if we did not find a feasible solution, we go back
             # because we sometimes store it in CpSAT solver
             if status["status_sol"] != SOLUTION_STATUS_FEASIBLE:
@@ -86,6 +101,7 @@ class GraphTW(CpSAT, Graph):
 
             if self.elapsed_time() >= TIME_LIMIT:
                 break
+            run += 1
         if best_sol is not None:
             self.solution = best_sol
         errors = self.check_solution()

@@ -38,7 +38,7 @@ class TestInstance(BaseTestInstance):
     def test_time_window(self):
         name = "test05.json"
         experiment = self.get_solved_experiment(name)
-        my_experim = solvers["cpsat"](experiment.instance, experiment.solution)
+        my_experim = solvers["cpsat2step"](experiment.instance, experiment.solution)
         # my_experim = solvers["cpsat"](self.instance, self.solution)
         options = dict(timeWindow=dict(size=10), msg=True, threads=8, timeLimit=60)
         my_experim.solve(options)
@@ -49,7 +49,7 @@ class TestInstance(BaseTestInstance):
         my_experim_solved = self.get_solved_experiment("test01.json")
         print(my_experim_solved.get_objective())
         my_experim_solved.run_validator(PATH_TO_VALIDATOR)
-        my_experim = solvers["cpsat"](my_experim_solved.instance)
+        my_experim = solvers["cpsat2step"](my_experim_solved.instance)
         my_experim.solve(dict(threads=8, timeLimit=60, msg=True, maxSample=[7]))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
@@ -61,7 +61,9 @@ class TestInstance(BaseTestInstance):
 
     def test_solve_competition_instance_cpsat(self):
 
-        my_experim = solvers["cpsat"](self.get_test_experiment("i15.json").instance)
+        my_experim = solvers["cpsat2step"](
+            self.get_test_experiment("i15.json").instance
+        )
         my_experim.solve(dict(threads=8, timeLimit=600, msg=True))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)

@@ -2,3 +2,4 @@
 black
 coverage
 build
+gprof2dot

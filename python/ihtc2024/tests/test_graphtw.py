@@ -30,7 +30,7 @@ class TestInstance(BaseTestInstance):
         my_experim.solve(dict(threads=8, timeLimit=1000, msg=True))
 
     def test_solve_test_instance_1(self):
-        my_experim_solved = self.get_solved_experiment("test04.json")
+        my_experim_solved = self.get_solved_experiment("test02.json")
         print(my_experim_solved.get_objective())
         my_experim_solved.run_validator(PATH_TO_VALIDATOR)
         my_experim = solvers["graph_tw"](my_experim_solved.instance)
@@ -45,8 +45,8 @@ class TestInstance(BaseTestInstance):
 
     def test_solve_competition_instance(self):
 
-        my_experim = solvers["graph_tw"](self.get_test_experiment("i01.json").instance)
-        my_experim.solve(dict(threads=8, timeLimit=20, msg=True))
+        my_experim = solvers["graph_tw"](self.get_test_experiment("i28.json").instance)
+        my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         objective = my_experim.get_objective()

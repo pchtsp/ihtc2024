@@ -72,7 +72,6 @@ def solve_zip(
         my_err_file = os.path.join(experiment_dir, "error.txt")
         start = timer()
         algo = solver(inst)
-        err_write_mode = "a"
         try:
             result = algo.solve(options)
         except Exception as e:
@@ -81,6 +80,8 @@ def solve_zip(
             )
             if not os.path.exists(my_err_file):
                 err_write_mode = "w"
+            else:
+                err_write_mode = "a"
 
             with open(my_err_file, err_write_mode) as f:
                 f.write(str(e))
@@ -110,6 +111,8 @@ def solve_zip(
             except Exception as e:
                 if not os.path.exists(my_err_file):
                     err_write_mode = "w"
+                else:
+                    err_write_mode = "a"
 
                 with open(my_err_file, err_write_mode) as f:
                     f.write("Report failed")

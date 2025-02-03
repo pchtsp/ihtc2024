@@ -53,7 +53,7 @@ class CpSAT(Experiment):
         rooms = self.rooms_id
         nurses = self.nurses_id
         admission_bin = my_vars["admission_bin"]
-        room_binary = my_vars["room_binary"]
+        room_binary = my_vars["room_binary"].vfilter(lambda v: not type(v) == int)
         theater_bin = my_vars["theater_bin"]
         open__ot_d = my_vars["open__ot_d"]
         max_age_diff = my_vars["max_age_diff"]
@@ -65,51 +65,74 @@ class CpSAT(Experiment):
         skill_diff__p_s = my_vars.get("skill_diff__p_s")
 
         model.ClearHints()
-        for v in patient_assignments.values():
-            p = v["id"]
-            d = v["admission_day"]
-            r = rooms[v["room"]]["pos"]
-            t = v["operating_theater"]
-            model.AddHint(admission_bin[p, d], 1)
-            model.AddHint(room_binary[p, r], 1)
-            model.AddHint(theater_bin[p, t], 1)
+        my_values = patient_assignments.values_tl()
+        admission_hint = my_values.take(["id", "admission_day"])
+        room_hint = my_values.take(["id", "room"]).vapply(
+            lambda v: (v[0], rooms[v[1]]["pos"])
+        )
+        theater_hint = my_values.take(["id", "operating_theater"])
 
-        for ot, d in ob_raw["open_operating_theater"]:
-            model.AddHint(open__ot_d[ot, d], 1)
+        def add_hint_binary(my_var, my_tup_list: TupList):
+            # all available values are 1
+            my_tup_list.vapply(lambda v: model.AddHint(my_var[v], 1))
+            # all non available values are 0
+            my_var.keys_tl().set_diff(my_tup_list).vapply(
+                lambda v: model.AddHint(my_var[v], 0)
+            )
 
-        for (s, d), ots in ob_raw["surgeon_transfer"].items():
-            for ot in ots:
-                model.AddHint(worked__s_ot_d[s, ot, d], 1)
+        def add_hint_value(my_var, my_dict: SuperDict):
+            # all available values are 1
+            my_dict.kvapply(lambda k, v: model.AddHint(my_var[k], v))
+            # all non available values are 0
+            my_var.keys_tl().set_diff(my_dict.keys()).vapply(
+                lambda v: model.AddHint(my_var[v], 0)
+            )
 
-        for (r, d), (_min, _max) in ob_raw["room_mixed_age"].items():
-            r2 = rooms[r]["pos"]
-            model.AddHint(max_age_diff[r2, d], _max - _min)
+        add_hint_binary(admission_bin, admission_hint)
+        add_hint_binary(room_binary, room_hint)
+        add_hint_binary(theater_bin, theater_hint)
+        add_hint_binary(open__ot_d, ob_raw["open_operating_theater"].keys_tl())
+        transfer_hint = (
+            ob_raw["surgeon_transfer"].vapply(list).to_tuplist().take([0, 2, 1])
+        )
+        add_hint_binary(worked__s_ot_d, transfer_hint)
+
+        mixed_age_hint = (
+            ob_raw["room_mixed_age"]
+            .vapply(lambda v: v[1] - v[0])
+            .to_tuplist()
+            .vapply(lambda v: (rooms[v[0]]["pos"], v[1], v[2]))
+            .to_dict(2, is_list=False)
+        )
+        add_hint_value(max_age_diff, mixed_age_hint)
 
         if nurse_bin__n_r_s:
-            nurse_assignments = self.get_nurse_assignment_shift()
-            for v in nurse_assignments.values():
-                r = rooms[v["room"]]["pos"]
-                n = nurses[v["id"]]["pos"]
-                s = v["shift_pos"]
-                model.AddHint(nurse_bin__n_r_s[n, r, s], 1)
+            nurse_hint = (
+                self.get_nurse_assignment_shift_ints().to_tuplist().take([2, 0, 1])
+            )
+            add_hint_binary(nurse_bin__n_r_s, nurse_hint)
 
         if skill_diff__p_s:
-            for (p, s), diff in ob_raw["room_nurse_skill"].items():
-                model.AddHint(skill_diff__p_s[p, s], diff)
+            add_hint_value(skill_diff__p_s, ob_raw["room_nurse_skill"])
 
         if nurse_patient__n_p:
-            for p, _nurses in ob_raw["continuity_of_care"].items():
-                for n in _nurses:
-                    n2 = nurses[n]["pos"]
-                    model.AddHint(nurse_patient__n_p[n2, p], 1)
+            continuity_hint = (
+                ob_raw["continuity_of_care"]
+                .vapply(list)
+                .to_tuplist()
+                .vapply(lambda v: (nurses[v[1]]["pos"], v[0]))
+            )
+            add_hint_binary(nurse_patient__n_p, continuity_hint)
 
         if nurse_overwork__n_s:
-            for (n, s), ow in ob_raw["nurse_eccessive_workload"].items():
-                n2 = nurses[n]["pos"]
-                if ow < 0:
-                    model.AddHint(nurse_overwork__n_s[n2, s], 0)
-                else:
-                    model.AddHint(nurse_overwork__n_s[n2, s], ow)
+            nurse_overwork_hint = (
+                ob_raw["nurse_eccessive_workload"]
+                .vapply(lambda v: max(v, 0))
+                .to_tuplist()
+                .vapply(lambda v: (nurses[v[0]]["pos"], v[1], v[2]))
+                .to_dict(2, is_list=False)
+            )
+            add_hint_value(nurse_overwork__n_s, nurse_overwork_hint)
 
     def get_objective_function(self, model, my_vars):
 
@@ -166,7 +189,7 @@ class CpSAT(Experiment):
         options["seed"] = options.get("seed", 42)
         rn.seed(options["seed"])
         VERBOSE = options.get("msg", False)
-        TIME_WINDOW = options.get("timeWindow")
+        options["timeWindow"] = TIME_WINDOW = self.setup_tw(options.get("timeWindow"))
         TIME_LIMIT = options.get("timeLimit", 100)
         WARM_START = options.get("warmStart", False)
         MAX_SAMPLE_OPTIONS = options.get("maxSample", [None])
@@ -185,15 +208,17 @@ class CpSAT(Experiment):
         my_vars = self.add_non_nurse_constraints(model, options)
         if VERBOSE:
             self.print_time("Nurse constraints")
-        my_vars = self.add_nurse_constraints2(model, my_vars)
+        my_vars = self.add_nurse_constraints2(model, my_vars, options)
         if VERBOSE:
             self.print_time("Objective function")
         self.get_objective_function(model, my_vars)
         if self.solution and (TIME_WINDOW or WARM_START):
             self.warm_start(model, my_vars)
+        if options.get("dump_vars"):
+            model.ExportToFile("model.txt")
         status = self.call_solver(model, solver, options)
         if options.get("dump_vars"):
-            self.dump_vars_model(model, solver, my_vars)
+            self.dump_vars(model, solver, my_vars)
 
         if options.get("msg", False):
             print(f"Model finished with status {status_conv.get(status)}")
@@ -227,6 +252,8 @@ class CpSAT(Experiment):
             solver.parameters.num_search_workers = options["threads"]
         if "fixSolution" in options:
             solver.parameters.fix_variables_to_their_hinted_value = True
+        if "warmStart" in options or "timeWindow" in options:
+            solver.parameters.repair_hint = True
         stop_condition = options.get("stop_condition")
         if stop_condition is None:
             solution_callback = None
@@ -272,10 +299,55 @@ class CpSAT(Experiment):
         #  as possibilities
         return possible_start, available_rooms__p
 
-    def tw_limit_starts_rooms(
-        self, possible_start, available_rooms__p, available_ot__p, TIME_WINDOW
-    ):
-        patients = self.instance.get_patients()
+    def get_nurse_assignment_shift_ints(self):
+        rooms = self.rooms_id
+        nurses = self.nurses_id
+
+        return (
+            self.get_nurse_assignment_shift()
+            .get_property("id")
+            .to_tuplist()
+            .vapply(lambda v: (rooms[v[0]]["pos"], v[1], nurses[v[2]]["pos"]))
+            .to_dict(2, is_list=False)
+        )
+
+    def tw_limit_nurse_assignments(self, TIME_WINDOW, p_o_start, domain_n__r_s):
+        start = TIME_WINDOW["start"]
+        end = start + TIME_WINDOW["size"] - 1
+        first_shift = self.instance.get_first_shift_of_day(start)
+        horizon_last_shift = self.instance.get_last_shift_horizon()
+        # last_shift = min(self.instance.get_last_shift_of_day(end), horizon_last_shift)
+
+        patients_occupants = self.instance.get_patients_occupants()
+        l_o_s = patients_occupants.get_property("length_of_stay")
+        last_relevant_shift__p = (
+            # we get the last possible starts inside the window
+            p_o_start.kfilter(lambda k: k[1] < end)
+            .to_tuplist()
+            .to_dict(1, indices=0)
+            .vapply(max)
+            # we project it into the future with the length of stay
+            .kvapply(lambda k, v: (v + l_o_s[k] - 1) * 3)
+            .vapply(lambda v: min(v, horizon_last_shift))
+        )
+        last_last_possible = max(last_relevant_shift__p.values())
+        nurse_assignment = self.get_nurse_assignment_shift_ints()
+
+        def get_nurses(rs, v):
+            if first_shift <= rs[1] <= last_last_possible:
+                return v
+            if rs in nurse_assignment:
+                return [nurse_assignment[rs]]
+            return []
+
+        new_domain_n__r_s = domain_n__r_s.kvapply(get_nurses)
+        # We do not filter domain__p_s because it's calculated from admission_bin already
+
+        return new_domain_n__r_s
+
+    def setup_tw(self, TIME_WINDOW):
+        if TIME_WINDOW is None:
+            return None
         size = TIME_WINDOW.get("size")
         start = TIME_WINDOW.get("start")
         if start is None:
@@ -283,6 +355,14 @@ class CpSAT(Experiment):
             start = rn.randint(0, max_start)
         else:
             size = min(size, self.instance.get_horizon_size_days() - start)
+        return dict(start=start, size=size)
+
+    def tw_limit_starts_rooms(
+        self, possible_start, available_rooms__p, available_ot__p, TIME_WINDOW
+    ):
+        start = TIME_WINDOW["start"]
+        size = TIME_WINDOW["size"]
+        patients = self.instance.get_patients()
         window = range(start, start + size)
         assignments = self.solution.get_patient_assignment().copy_deep()
         patients_in_tw = assignments.vfilter(
@@ -359,6 +439,8 @@ class CpSAT(Experiment):
         #  I may need to fill the fixed nurse variables
 
         TIME_WINDOW = options.get("timeWindow")
+        WARM_START = options.get("warmStart")
+
         if TIME_WINDOW is not None and self.solution is not None:
             possible_start, available_rooms__p, available_ot__p = (
                 self.tw_limit_starts_rooms(
@@ -371,6 +453,24 @@ class CpSAT(Experiment):
             possible_start, available_rooms__p = self.sample_starts_rooms(
                 possible_start, available_rooms__p, MAX_SAMPLE
             )
+
+            if self.solution and (TIME_WINDOW or WARM_START):
+                # we make sure that the current patient assignments are part of the domain
+                solution = self.solution.get_patient_assignment().values_tl()
+                add_starts = (
+                    solution.take(["id", "admission_day"]).to_dict(1).vapply(set)
+                )
+                add_rooms = solution.take(["id", "room"]).to_dict(1).vapply(set)
+                possible_start = (
+                    possible_start.vapply(set)
+                    .kvapply(lambda k, v: v | add_starts.get(k, set()))
+                    .vapply(list)
+                )
+                available_rooms__p = (
+                    available_rooms__p.vapply(set)
+                    .kvapply(lambda k, v: v | add_rooms.get(k, set()))
+                    .vapply(list)
+                )
 
         patients_occupants = self.instance.get_patients_occupants().filter(
             possible_start
@@ -405,7 +505,7 @@ class CpSAT(Experiment):
 
         admission_bin = SuperDict(
             {
-                (p, d): model.NewBoolVar(f"admission_bin_{p}_{d}")
+                (p, d): model.NewBoolVar(name=f"admission_bin_{p}_{d}")
                 for p, days in possible_start.items()
                 for d in days
                 if p in patients
@@ -417,7 +517,7 @@ class CpSAT(Experiment):
             .kvapply(
                 lambda k, v: (
                     model.NewIntVarFromDomain(
-                        cp_model.Domain.FromValues(values=v), f"admission_{k}"
+                        cp_model.Domain.FromValues(values=v), name=f"admission_{k}"
                     )
                 )
             )
@@ -436,7 +536,7 @@ class CpSAT(Experiment):
 
         theater_bin = SuperDict(
             {
-                (p, ot): model.NewBoolVar(f"theater_bin_{p}_{ot}")
+                (p, ot): model.NewBoolVar(name=f"theater_bin_{p}_{ot}")
                 for p, ots in available_ot__p.items()
                 for ot in ots
             }
@@ -453,7 +553,9 @@ class CpSAT(Experiment):
             .to_dict(None)
             .vapply(
                 lambda v: (
-                    model.NewBoolVar(f"room_{v[0]}_{v[1]}") if v[0] in patients else 1
+                    model.NewBoolVar(name=f"room_{v[0]}_{v[1]}")
+                    if v[0] in patients
+                    else 1
                 )
             )
         )
@@ -485,7 +587,7 @@ class CpSAT(Experiment):
         # binary if surgeon works in ot in day d
         worked__s_ot_d = SuperDict(
             {
-                (s, ot, d): model.NewBoolVar(f"worked_{s}_{ot}_{d}")
+                (s, ot, d): model.NewBoolVar(name=f"worked_{s}_{ot}_{d}")
                 for s, capacities in surgeons_cap.items()
                 for d, cap in capacities.items()
                 if cap > 0
@@ -497,7 +599,7 @@ class CpSAT(Experiment):
         # ot is open (S5)
         open__ot_d = SuperDict(
             {
-                (ot, d): model.NewBoolVar(f"open_{ot}_{d}")
+                (ot, d): model.NewBoolVar(name=f"open_{ot}_{d}")
                 for ot, days in ot_cap.items()
                 for d in days
                 if ot_cap[ot][d] > 0
@@ -696,9 +798,7 @@ class CpSAT(Experiment):
         return my_vars
 
     def add_nurse_constraints2(
-        self,
-        model: cp_model.CpModel,
-        my_vars: my_vars_type,
+        self, model: cp_model.CpModel, my_vars: my_vars_type, options: dict
     ) -> my_vars_type:
         patients_occupants = self.instance.get_patients_occupants()
         occupants = patients_occupants.vfilter(lambda v: v["is_occupant"])
@@ -723,26 +823,17 @@ class CpSAT(Experiment):
         )
         MaxWL__p = Options_wl__p.vapply(max)
 
-        # TODO: if tw mode, maybe constraint this?
         nurses__s = (
             nurse_shifts.values_tl()
             .copy_deep()
             .vapply_col("nurse_pos", lambda v: nurses[v["nurse"]]["pos"])
             .to_dict("nurse_pos", indices="shift_pos")
         )
-        nurse_max_load__n_s = (
-            nurse_shifts.values_tl()
-            .copy_deep()
-            .vapply_col("nurse_pos", lambda v: nurses[v["nurse"]]["pos"])
-            .to_dict("max_load", indices=["nurse_pos", "shift_pos"], is_list=False)
-        )
-        domain__n_r_s = TupList(
-            (n, r["pos"], shift)
+        domain_n__r_s = SuperDict(
+            ((r["pos"], shift), _nurses)
             for r in rooms.values()
             for shift, _nurses in nurses__s.items()
-            for n in _nurses
         )
-        n__r_s = domain__n_r_s.to_dict(0)
         # admission_bin doesn't include occupants.
         # I correct it here to add them:
         p_o_start = SuperDict({(o, 0): 1 for o in occupants})
@@ -750,9 +841,44 @@ class CpSAT(Experiment):
         possible_start = p_o_start.keys_tl().to_dict(1)
         possible_stay = self.get_stay_options_from_starts(possible_start)
         __s = self.instance.get_shifts_of_day
+
         domain__p_s = TupList(
             (p, s) for p, days in possible_stay.items() for d in days for s in __s(d)
-        ).to_dict(None)
+        )
+
+        TIME_WINDOW = options.get("timeWindow")
+        MAX_SAMPLE = options.get("maxSampleN")
+        WARM_START = options.get("warmStart")
+        if TIME_WINDOW:
+            domain_n__r_s = self.tw_limit_nurse_assignments(
+                TIME_WINDOW, p_o_start, domain_n__r_s
+            )
+
+        if MAX_SAMPLE:
+
+            def sample_range(nurse_range):
+                my_sample = rn.sample(nurse_range, k=min(MAX_SAMPLE, len(nurse_range)))
+                return my_sample
+
+            domain_n__r_s = domain_n__r_s.vapply(sample_range)
+            if self.solution and (TIME_WINDOW or WARM_START):
+                # we guarantee that the current nurse assignment is included in the domain
+                nurse_sol = self.get_nurse_assignment_shift_ints().vapply(lambda v: {v})
+                domain_n__r_s = (
+                    domain_n__r_s.vapply(set)
+                    .kvapply(lambda k, v: v | nurse_sol.get(k, set()))
+                    .vapply(list)
+                )
+
+        domain__n_r_s = domain_n__r_s.to_tuplist().vapply(lambda v: (v[2], v[0], v[1]))
+        n__r_s = domain_n__r_s
+
+        nurse_max_load__n_s = (
+            nurse_shifts.values_tl()
+            .copy_deep()
+            .vapply_col("nurse_pos", lambda v: nurses[v["nurse"]]["pos"])
+            .to_dict("max_load", indices=["nurse_pos", "shift_pos"], is_list=False)
+        )
         domain_n_p_s = TupList((n, p, s) for p, s in domain__p_s for n in nurses__s[s])
         domain_n_p_s__n_s = domain_n_p_s.to_dict(1)
         domain__n_p = domain_n_p_s.take([0, 1]).unique2()
@@ -764,12 +890,12 @@ class CpSAT(Experiment):
 
         nurse_bin__n_r_s = SuperDict(
             {
-                (n, r, s): model.NewBoolVar(f"nurse_bin_{n}_{r}_{s}")
+                (n, r, s): model.NewBoolVar(name=f"nurse_bin_{n}_{r}_{s}")
                 for n, r, s in domain__n_r_s
             }
         )
 
-        skill_diff__p_s = domain__p_s.kapply(
+        skill_diff__p_s = domain__p_s.to_dict(None).kapply(
             lambda k: model.NewIntVar(
                 0, max_skill_level, name=f"skill_diff_{k[0]}_{k[1]}"
             )
@@ -778,7 +904,7 @@ class CpSAT(Experiment):
         nurse_overwork__n_s = domain_n_p_s__n_s.vapply(
             lambda _patients: sum(MaxWL__p[p] for p in _patients)
         ).kvapply(lambda k, v: model.NewIntVar(0, v, name=f"overwork_{k[0]}_{k[1]}"))
-
+        # TODO: I can constraint a bit better the occupants values, depending on the shift
         patient_nurse_workload__n_p_s = domain_n_p_s.to_dict(None).vapply(
             lambda v: (
                 model.NewIntVarFromDomain(
@@ -786,7 +912,12 @@ class CpSAT(Experiment):
                     name=f"workload_{v[0]}_{v[1]}_{v[2]}",
                 )
                 if not patients_occupants[v[1]]["is_occupant"]
-                else workload__p_posShift[v[1], v[2]]
+                else model.NewIntVarFromDomain(
+                    cp_model.Domain.FromValues(
+                        values=[workload__p_posShift[v[1], v[2]], 0]
+                    ),
+                    name=f"workload_{v[0]}_{v[1]}_{v[2]}",
+                )
             )
         )
         nurse_patient__n_p = SuperDict(
@@ -799,12 +930,19 @@ class CpSAT(Experiment):
         # if a patient is in a room, then a nurse needs to be assigned.
 
         # this is a very big constraint/domain
+        self.print_time("Building big domain for p_d_s_ps_r")
         __s = lambda day, posShift: day * 3 + posShift
+        shifts__p_d = p_o_start.kapply(
+            lambda k: [
+                (pS, shift)
+                for pS in range(positions_p[k[0]])
+                if (shift := __s(k[1], pS)) <= last_shift
+            ]
+        )
         patient_day_shift_pos_room = [
-            (p, d, __s(d, pS), pS, r)
+            (p, d, shift, pS, r)
             for p, d in p_o_start
-            for pS in range(positions_p[p])
-            if __s(d, pS) <= last_shift
+            for pS, shift in shifts__p_d[p, d]
             for r in rooms__p[p]
         ]
         for p, d, s, _, r in patient_day_shift_pos_room:
@@ -812,13 +950,16 @@ class CpSAT(Experiment):
             model.Add(
                 my_sum([nurse_bin__n_r_s[n, r, s] for n in n__r_s.get((r, s), [])]) == 1
             ).OnlyEnforceIf(p_o_start[p, d], room_binary[p, r])
+        self.print_time(f"size of semibig domain: {len(patient_day_shift_pos_room)}")
 
+        self.print_time("Building big domain for p_d_s_ps_r_n")
         patient_day_shift_pos_room_nurse = [
             (p, d, s, pS, r, n)
             for p, d, s, pS, r in patient_day_shift_pos_room
             for n in n__r_s.get((r, s), [])
         ]
-
+        self.print_time(f"size of big domain: {len(patient_day_shift_pos_room_nurse)}")
+        self.print_time("Most nurse constraints")
         for p, d, s, pS, r, n in patient_day_shift_pos_room_nurse:
             # skill difference definition
             model.Add(
@@ -839,6 +980,7 @@ class CpSAT(Experiment):
                 negate_var_bool(room_binary[p, r]),
             )
 
+        self.print_time("nurse overwork constraints")
         for (n, s), _patients in domain_n_p_s__n_s.items():
             _all_workload = [patient_nurse_workload__n_p_s[n, p, s] for p in _patients]
             model.Add(
@@ -852,284 +994,6 @@ class CpSAT(Experiment):
             nurse_bin__n_r_s=nurse_bin__n_r_s,
         )
         my_vars.update(more_vars)
-        return my_vars
-
-    # for patient, day in possible_starts.keys():
-    def add_nurse_constraints(
-        self,
-        model: cp_model.CpModel,
-        my_vars: my_vars_type,
-    ) -> my_vars_type:
-
-        patients = self.instance.get_patients()
-        patients_occupants = self.instance.get_patients_occupants()
-        rooms = self.rooms_id
-        nurses = self.nurses_id
-
-        DUMMY_NURSE_POS = len(nurses)
-        nurse_shifts = self.instance.get_nurse_shift()
-        needs__p_sPos = self.instance.get_patients_occupants_needs()
-        last_shift = self.instance.get_last_shift_horizon()
-
-        # nurses part
-        # TODO: if tw mode, maybe constraint this?
-        nurse_r_s = SuperDict()
-        nurses__s = (
-            nurse_shifts.values_tl()
-            .copy_deep()
-            .vapply_col("nurse_pos", lambda v: nurses[v["nurse"]]["pos"])
-            .to_dict("nurse_pos", indices="shift_pos")
-        )
-        domain__n_r_s = TupList(
-            (n, r["pos"], shift)
-            for r in rooms.values()
-            for shift, _nurses in nurses__s.items()
-            for n in _nurses
-        )
-        nurse_bin__n_r_s = SuperDict(
-            {
-                (n, r, s): model.NewBoolVar(f"nurse_bin_{n}_{r}_{s}")
-                for n, r, s in domain__n_r_s
-            }
-        )
-
-        domain_n_r_s__r_s = domain__n_r_s.to_dict(0)
-        for (r, s), _nurses in domain_n_r_s__r_s.items():
-            nurse_r_s[r, s] = model.NewIntVarFromDomain(
-                domain=cp_model.Domain.FromValues(values=_nurses),
-                name=f"nurse_{r}_{s}",
-            )
-            for n in _nurses:
-                model.Add(nurse_r_s[r, s] == n).OnlyEnforceIf(nurse_bin__n_r_s[n, r, s])
-                model.Add(nurse_r_s[r, s] != n).OnlyEnforceIf(
-                    nurse_bin__n_r_s[n, r, s].Not()
-                )
-        # for each patient-shift, we store the nurse assigned
-        stay_bin = my_vars["stay_bin"]
-        domain_n_p_s = TupList(
-            (n, p, s)
-            for p, d in stay_bin.keys()
-            for s in self.instance.get_shifts_of_day(d)
-            for n in nurses__s[s]
-        )
-        # nurse covers patient
-        nurse_patient__n_p_s = SuperDict(
-            {
-                (n, p, s): model.NewBoolVar(name=f"nurse_patient_{n}_{p}_{s}")
-                for n, p, s in domain_n_p_s
-            }
-        )
-        # when a passenger is not staying in a giving day, it's assigned a dummy nurse:
-        # so all shifts (in theory) can have a dummy nurse
-        # except occupants, where I know when they're staying
-        domain_n_p_s__p_s = domain_n_p_s.to_dict(0)
-        domain_n_p_s__p_s_with_dummy = domain_n_p_s__p_s.kvapply(
-            lambda k, v: v + [DUMMY_NURSE_POS] if k[0] in patients else v
-        )
-        nurse__p_s = domain_n_p_s__p_s_with_dummy.kvapply(
-            lambda k, v: model.NewIntVarFromDomain(
-                cp_model.Domain.FromValues(values=v), name=f"nurse__p_s{k[0]}_{k[1]}"
-            )
-        )
-
-        domain__n_p = domain_n_p_s.take([0, 1]).unique2()
-        nurse_patient__n_p = SuperDict(
-            {
-                (n, p): model.NewBoolVar(name=f"nurse_patient_{n}_{p}")
-                for n, p in domain__n_p
-            }
-        )
-
-        # for each, p, s:
-        nurse_r_s__s_r = (
-            nurse_r_s.to_tuplist()
-            .to_dict(2, indices=[1, 0], is_list=False)
-            .to_dictdict()
-        )
-        room_p = my_vars["room_p"]
-        room_positions = rooms.vapply(lambda v: v["pos"]).values_tl().sorted()
-        for p, d in stay_bin.keys():
-            for s in self.instance.get_shifts_of_day(d):
-                nurses_per_room = [nurse_r_s__s_r[s][r] for r in room_positions]
-                # we add the dummy nurse in the dummy room position
-                nurses_per_room.append(DUMMY_NURSE_POS)
-                model.AddElement(room_p[p], nurses_per_room, nurse__p_s[p, s])
-
-        for n, p, s in domain_n_p_s:
-            _day = self.instance.get_day_from_shift(s)
-            # tie the binary to the element variable
-            model.Add(nurse__p_s[p, s] == n).OnlyEnforceIf(
-                nurse_patient__n_p_s[n, p, s], stay_bin[p, _day]
-            )
-            model.Add(nurse__p_s[p, s] != n).OnlyEnforceIf(
-                nurse_patient__n_p_s[n, p, s].Not(), stay_bin[p, _day]
-            )
-            # if the patient is not staying that shift, no nurse is assigned
-            model.AddImplication(nurse_patient__n_p_s[n, p, s], stay_bin[p, _day])
-            # model.Add(nurse_patient__n_p_s[n, p, s] <= stay_bin[p, _day])
-
-            # S3
-            # if a nurse treats once, we count
-            model.AddImplication(
-                nurse_patient__n_p_s[n, p, s], nurse_patient__n_p[n, p]
-            )
-            # model.Add(nurse_patient__n_p[n, p] >= nurse_patient__n_p_s[n, p, s])
-
-        # S4 maximum workload
-        domain_n_p_s__n_s = domain_n_p_s.to_dict(1)
-        nurse_max_load__n_s = (
-            nurse_shifts.values_tl()
-            .copy_deep()
-            .vapply_col("nurse_pos", lambda v: nurses[v["nurse"]]["pos"])
-            .to_dict("max_load", indices=["nurse_pos", "shift_pos"], is_list=False)
-        )
-
-        MaxWL__p = (
-            needs__p_sPos.values_tl()
-            .to_dict("workload_produced", indices="id")
-            .vapply(max)
-        )
-        # the upper bound is the sum of the largest possible workloads of patients available for that nurse in that shift
-        nurse_overwork__n_s = domain_n_p_s__n_s.vapply(
-            lambda _patients: sum(MaxWL__p[p] for p in _patients)
-        ).kvapply(lambda k, v: model.NewIntVar(0, v, name=f"overwork_{k[0]}_{k[1]}"))
-
-        workload__p_posShift = needs__p_sPos.get_property("workload_produced")
-        skill_level__p_sPos = needs__p_sPos.get_property("skill_level_required")
-
-        # occupants, the workload comes directly from the position of the shift
-        # all the others are variables:
-        patient_workload__p_s = (
-            domain_n_p_s.take([1, 2])
-            .unique2()
-            .to_dict(None)
-            .vapply(
-                lambda v: (
-                    model.NewIntVar(0, MaxWL__p[v[0]], name=f"workload_{v[0]}_{v[1]}")
-                    if not patients_occupants[v[0]]["is_occupant"]
-                    else workload__p_posShift[v[0], v[1]]
-                )
-            )
-        )
-        positions_p = needs__p_sPos.keys_tl().to_dict(1).vapply(len)
-        # TODO: I can filter some values based on the position of the shift relative to the start/end of potential stay
-        patient_posShift__p_s = nurse__p_s.kapply(
-            lambda k: (
-                model.NewIntVar(0, positions_p[k[0]], name=f"position_{k[0]}_{k[1]}")
-                if not patients_occupants[k[0]]["is_occupant"]
-                else k[1]
-            )
-        )
-
-        patient_nurse_workload__n_p_s = domain_n_p_s.to_dict(None).vapply(
-            lambda v: (
-                model.NewIntVar(
-                    0, MaxWL__p[v[1]], name=f"workload_{v[0]}_{v[1]}_{v[2]}"
-                )
-                if not patients_occupants[v[1]]["is_occupant"]
-                else workload__p_posShift[v[1], v[2]]
-            )
-        )
-        # we define the position shift for each active shift
-        admission_bin = my_vars["admission_bin"]
-        for (p, day), admission in admission_bin.items():
-            for posShift in range(positions_p[p]):
-                my_shift = day * 3 + posShift
-                if my_shift > last_shift:
-                    continue
-                model.Add(patient_posShift__p_s[p, my_shift] == posShift).OnlyEnforceIf(
-                    admission
-                )
-
-        # we assign this workload to a nurse
-        # when there is an assignment
-        for n, p, s in domain_n_p_s:
-            model.Add(
-                patient_nurse_workload__n_p_s[n, p, s] == patient_workload__p_s[p, s]
-            ).OnlyEnforceIf(nurse_patient__n_p_s[n, p, s])
-
-        for (n, s), _patients in domain_n_p_s__n_s.items():
-            _all_workload = [patient_nurse_workload__n_p_s[n, p, s] for p in _patients]
-            model.Add(
-                nurse_overwork__n_s[n, s]
-                >= my_sum(_all_workload) - nurse_max_load__n_s[n, s]
-            )
-
-        # S2
-        # calculate the skill levels ordered by position of nurse (for element constraint)
-        nurses_skill_level = (
-            nurses.values_tl().sorted(key=lambda v: v["pos"]).take("skill_level")
-        )
-        # we add dummy_nurse has all skills:
-        max_skill_level = max(nurses_skill_level)
-        nurses_skill_level += [max_skill_level]
-        # skill level given to patient p in shift s
-        skill_level__p_s = nurse__p_s.kapply(
-            lambda k: model.NewIntVar(
-                0, max_skill_level, name=f"skill_level_{k[0]}_{k[1]}"
-            )
-        )
-        # skill difference between required and actual
-        skill_diff__p_s = nurse__p_s.kapply(
-            lambda k: model.NewIntVar(
-                0, max_skill_level, name=f"skill_diff_{k[0]}_{k[1]}"
-            )
-        )
-        max_skill_level__p = (
-            skill_level__p_sPos.to_tuplist().to_dict(2, indices=0).vapply(max)
-        )
-        skill_needed__p_s = nurse__p_s.kapply(
-            lambda k: (
-                model.NewIntVar(
-                    0, max_skill_level__p[k[0]], name=f"skill_need_{k[0]}_{k[1]}"
-                )
-                if not patients_occupants[k[0]]["is_occupant"]
-                else skill_level__p_sPos[k[0], k[1]]
-            )
-        )
-
-        for p, s in patient_posShift__p_s.keys():
-            workload_per_pos = [
-                workload__p_posShift[p, pos] for pos in range(positions_p[p])
-            ]
-            skill_level_per_pos = [
-                skill_level__p_sPos[p, pos] for pos in range(positions_p[p])
-            ]
-            if not patients_occupants[p]["is_occupant"]:
-                # we get the workload from the position
-                # occupants have it already pre-assigned
-                model.AddElement(
-                    patient_posShift__p_s[p, s],
-                    workload_per_pos,
-                    patient_workload__p_s[p, s],
-                )
-                # we get the required skill level from the position
-                # occupants have it already pre-assigned
-                model.AddElement(
-                    patient_posShift__p_s[p, s],
-                    skill_level_per_pos,
-                    skill_needed__p_s[p, s],
-                )
-            # we use nurse[p, s] to get the skill-level given to patient p in shift s
-            model.AddElement(
-                nurse__p_s[p, s], nurses_skill_level, skill_level__p_s[p, s]
-            )
-            my_day = self.instance.get_day_from_shift(s)
-            # we calculate the difference between the level and the required level
-            # but only if the stay is active
-            model.Add(
-                skill_diff__p_s[p, s]
-                >= skill_needed__p_s[p, s] - skill_level__p_s[p, s]
-            ).OnlyEnforceIf(stay_bin[p, my_day])
-
-        more_vars = dict(
-            skill_diff__p_s=skill_diff__p_s,
-            nurse_patient__n_p=nurse_patient__n_p,
-            nurse_overwork__n_s=nurse_overwork__n_s,
-            nurse_bin__n_r_s=nurse_bin__n_r_s,
-        )
-        my_vars.update(more_vars)
-
         return my_vars
 
     def get_rooms_with_id(self) -> dict:
@@ -1144,7 +1008,7 @@ class CpSAT(Experiment):
             n["pos"] = pos
         return nurses
 
-    def dump_vars_model(self, model, solver: cp_model.CpSolver, my_vars):
+    def dump_vars(self, model, solver: cp_model.CpSolver, my_vars):
         try:
             result = {
                 k: v.vapply(solver.Value).vfilter(lambda v: v)
@@ -1156,7 +1020,6 @@ class CpSAT(Experiment):
         result = SuperDict(result).to_dictdict()
         with open("my_vars.json", "w") as f:
             json.dump(result, f)
-        model.ExportToFile("model.txt")
 
     def my_vars_to_solution(self, solver, my_vars) -> dict:
         admission_bin = my_vars["admission_bin"]

@@ -9,20 +9,17 @@ path_to_dir = "/home/pchtsp/Documents/projects/ihtc2024/results"
 path_in = "/home/pchtsp/Documents/projects/ihtc2024/data/"
 
 test_cases = dict(
-    graph2="2025-01-22T0914-system76-pc",
-    cpsat3="2025-01-21T1755-system76-pc",
+    cpsat="2025-01-23T1722-system76-pc",
+    cpsat2step="2025-01-23T2133-system76-pc",
+    graph="2025-01-24T0530-system76-pc",
+    graphtw_2step="2025-01-27T1139-system76-pc",
+    graphtw_both="2025-01-28T1205-system76-pc",
     ref="reference",
-    graphtw="2025-01-22T1246-system76-pc",
 )
 competition_cases = dict(
-    # timefold_py="2024-11-08T2311-system76-pc",
-    # cpsat="2024-11-09T1227-system76-pc",
-    # cpsat2="2024-11-19T2108-system76-pc",
-    cpsat3="2025-01-21T1756-system76-pc",
-    graph2="2025-01-20T1004-system76-pc",
-    graph3="2025-01-21T1145-system76-pc",
-    # graph="2024-12-03T1206-system76-pc",
-    graphtw="2025-01-22T1247-system76-pc",
+    cpsat2step="2025-01-23T2313-system76-pc",
+    graph="2025-01-24T0557-system76-pc",
+    graphTW_2step="2025-01-27T2102-system76-pc",
 )
 if __name__ == "__main__":
 
@@ -32,6 +29,7 @@ if __name__ == "__main__":
     info2 = "errors"
     info2 = "time"
     info1 = "value"
+
     # info1 = "gap"
     # info2 = None
 

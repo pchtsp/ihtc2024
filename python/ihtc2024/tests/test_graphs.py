@@ -28,11 +28,44 @@ class TestInstance(BaseTestInstance):
         print(objective)
         my_experim.run_validator(PATH_TO_VALIDATOR)
 
+    def test_solve_test01(self):
+        my_experim = self.get_solved_experiment("test04.json")
+        my_experim = solvers["graph"](my_experim.instance)
+        my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
+
     def test_group_nurses(self):
         nurse_shifts = self.instance.get_nurse_shift()
         groups = self.instance.get_nurse_groups(nurse_shifts, 0.05, 0.015)
         print(f"nurses: {len(groups)}")
         print(f"groups: {len(groups.values_tl().unique2())}")
+
+    def test_profile_test10(self):
+        my_experim = self.get_solved_experiment("test10.json")
+        my_experim = solvers["graph"](my_experim.instance)
+        my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
+
+    def test_profile_test01_graphcreation(self):
+        my_experim = self.get_solved_experiment("test01.json")
+        my_experim = solvers["graph"](my_experim.instance, group_nurses=False)
+
+    def test_profile_test10_graphcreation(self):
+        my_experim = self.get_solved_experiment("test10.json")
+        my_experim = solvers["graph"](my_experim.instance, group_nurses=False)
+
+    def test_profile_test01_graphiterations(self):
+        my_experim = self.get_solved_experiment("test01.json")
+        my_experim = solvers["graph"](my_experim.instance)
+        my_experim.solve(dict(threads=8, timeLimit=1200, msg=True))
+
+    def test_profile_test10_graphiterations(self):
+        my_experim = self.get_solved_experiment("test10.json")
+        my_experim = solvers["graph"](my_experim.instance, group_nurses=False)
+        my_experim.solve(dict(threads=8, timeLimit=1200, msg=True))
+
+    def test_profile_test29_graphiterations(self):
+        my_experim = self.get_test_experiment("i29.json")
+        my_experim = solvers["graph"](my_experim.instance, group_nurses=False)
+        my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
 
     def test_group_nurses_larger(self):
         # my_experim = self.get_solved_experiment("test05.json")

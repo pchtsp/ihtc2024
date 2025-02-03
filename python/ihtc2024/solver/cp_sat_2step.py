@@ -29,9 +29,6 @@ import logging as log
 
 class CpSAT2Step(CpSAT):
 
-    def __init__(self, instance: Instance, solution: Solution = None):
-        CpSAT.__init__(self, instance, solution)
-
     def solve(self, options: dict = None) -> dict:
         options = dict(options)
         stop_condition = dict(ma_size=20, min_imp_per_sec=5, length_bad_imp=20)
@@ -39,7 +36,7 @@ class CpSAT2Step(CpSAT):
         options["seed"] = options.get("seed", 42)
         rn.seed(options["seed"])
         VERBOSE = options.get("msg", False)
-        TIME_WINDOW = options.get("timeWindow")
+        options["timeWindow"] = TIME_WINDOW = self.setup_tw(options.get("timeWindow"))
         TIME_LIMIT = options.get("timeLimit", 100)
         WARM_START = options.get("warmStart", False)
         MAX_SAMPLE_OPTIONS = options.get("maxSample", [7, 10, None])
@@ -94,7 +91,10 @@ class CpSAT2Step(CpSAT):
             self.print_time("Nurse constraints")
 
         # we add the nurse constraints
-        my_vars = self.add_nurse_constraints2(model, my_vars)
+        # here we need to deactivate TIME_WINDOW because we do not have a complete solution
+        options_2 = dict(options)
+        options_2.pop("timeWindow", None)
+        my_vars = self.add_nurse_constraints2(model, my_vars, options_2)
         if VERBOSE:
             self.print_time("Objective function constraints")
 
