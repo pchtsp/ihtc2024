@@ -9,6 +9,7 @@ import time
 from contextlib import contextmanager
 from collections import deque
 import json
+import logging as log
 
 from pytups import SuperDict, TupList
 
@@ -46,6 +47,7 @@ class CpSAT(Experiment):
 
     def print_time(self, msg):
         print_time(self.init, msg)
+        log.info(msg)
 
     def warm_start(self, model, my_vars: my_vars_type):
         patient_assignments = self.solution.get_patient_assignment()
@@ -221,11 +223,11 @@ class CpSAT(Experiment):
             self.dump_vars(model, solver, my_vars)
 
         if options.get("msg", False):
-            print(f"Model finished with status {status_conv.get(status)}")
+            self.print_time(f"Model finished with status {status_conv.get(status)}")
 
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             if VERBOSE:
-                print("No solution was found")
+                self.print_time("No solution was found")
             return dict(
                 status=status_conv.get(status),
                 status_sol=SOLUTION_STATUS_INFEASIBLE,
@@ -242,7 +244,7 @@ class CpSAT(Experiment):
         errors = model.Validate()
         if errors:
             if options.get("msg", False):
-                print(errors)
+                self.print_time(errors)
 
             raise ValueError("Model not formulated correctly")
         if options.get("msg", False):
@@ -266,7 +268,7 @@ class CpSAT(Experiment):
         #     solution_callback = VarArraySolutionPrinter()
 
         if options.get("msg", False):
-            print("Solver starts")
+            self.print_time("Solver starts")
 
         path_of_log = options.get("logPath")
         if path_of_log is not None:

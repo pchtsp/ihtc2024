@@ -1,6 +1,3 @@
-import time
-import numpy as np
-import statistics as stats
 import os
 import random as rn
 from ortools.sat.python import cp_model
@@ -24,8 +21,6 @@ status_conv = {
     cp_model.MODEL_INVALID: STATUS_UNDEFINED,
 }
 
-import logging as log
-
 
 class CpSAT2Step(CpSAT):
 
@@ -40,10 +35,15 @@ class CpSAT2Step(CpSAT):
         TIME_LIMIT = options.get("timeLimit", 100)
         WARM_START = options.get("warmStart", False)
         MAX_SAMPLE_OPTIONS = options.get("maxSample", [7, 10, None])
-        if TIME_WINDOW:
-            MAX_SAMPLE_OPTIONS = [None]
         if VERBOSE:
             self.print_time("Building of model starts")
+
+        if TIME_WINDOW:
+            if VERBOSE:
+                self.print_time(
+                    f"Time window: start: {TIME_WINDOW['start']} length:{TIME_WINDOW['size']}"
+                )
+            MAX_SAMPLE_OPTIONS = [None]
 
         solver = cp_model.CpSolver()
         status1 = STATUS_UNDEFINED
@@ -74,7 +74,7 @@ class CpSAT2Step(CpSAT):
 
         if status1 not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             if VERBOSE:
-                print("No solution was found")
+                self.print_time("No solution was found")
             return dict(
                 status=STATUS_TIME_LIMIT,
                 status_sol=SOLUTION_STATUS_INFEASIBLE,
@@ -110,11 +110,11 @@ class CpSAT2Step(CpSAT):
         status = self.call_solver(model, solver, my_options_2)
 
         if options.get("msg", False):
-            print(f"Model finished with status {status_conv.get(status)}")
+            self.print_time(f"Model finished with status {status_conv.get(status)}")
 
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             if VERBOSE:
-                print("No solution was found")
+                self.print_time("No solution was found")
             return dict(
                 status=status_conv.get(status), status_sol=SOLUTION_STATUS_INFEASIBLE
             )

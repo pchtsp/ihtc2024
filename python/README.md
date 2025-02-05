@@ -24,3 +24,10 @@ Also check here for how to add it to the virtual environment https://jolo.xyz/bl
 sudo apt-get install python3-graph-tool
 sudo apt-get install libgtk-3-dev libgirepository1.0-dev libcairo2-dev pkg-config python3-dev libgirepository1.0-dev
 ```
+
+To install the validation run:
+
+```bash
+cd validator
+g++ -o IHTP_Validator IHTP_Validator.cc 
+```

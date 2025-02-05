@@ -116,7 +116,7 @@ class GraphTool(object):
         nurse_ml = self.instance.get_nurse_shift().get_property("max_load")
         nurse_shifts = self.instance.get_nurse_shift()
         if group_nurses:
-            nurse_group = self.instance.get_nurse_groups(nurse_shifts, 5, 1)
+            nurse_group = self.instance.get_nurse_groups(nurse_shifts, 1, 1)
         else:
             # all nurses have the same group:
             nurse_group = nurse_sl.vapply(lambda v: 0)
@@ -524,7 +524,6 @@ class GraphTool(object):
         proposed_skill_level = self.skill_level_vp.get_array()
 
         # I first calculate the new patient's penalties per node
-        diff_error = np.zeros_like(proposed_skill_level)
         shift_sl_needs = (
             self.__needs__p__s[patient_info["id"]]
             .get_property("skill_level_required")
@@ -547,21 +546,41 @@ class GraphTool(object):
 
         # And now I calculate the penalties of changing the nurse of a particular room
         #  for all other patients
+        diff_error = np.zeros_like(proposed_skill_level)
         for (r, s), required_l in level_required.items():
             # list of nodes that cover that room and shift:
             relevant_node = self.nodes__r_s[r, s]
+            # proposed skill level for each node
+            proposed = proposed_skill_level[relevant_node]
             # we iterate over all the required levels in that room and shift
             #  i.e., over each patient currently assigned to that room in that shift
-            for required in required_l:
-                # penalty of the current assignment for that room and shift
-                penalty_1 = max(0, required - skill_level__r_s[r, s])
-                # penalty of the proposed assignment for all nodes
-                #  that have that room and shift
-                penalty_2 = required - proposed_skill_level[relevant_node]
-                np.clip(penalty_2, 0, None, out=penalty_2)
-                # penalty_2[penalty_2 < 0] = 0
-                # we calculate the increase in penalties (change in objective function term)
-                diff_error[relevant_node] += penalty_2 - penalty_1
+            # for required in required_l:
+            #     # penalty of the current assignment for that room and shift
+            #     penalty_1 = max(0, required - skill_level__r_s[r, s])
+            #     # penalty of the proposed assignment for all nodes
+            #     #  that have that room and shift
+            #     penalty_2 = required - proposed
+            #     np.clip(penalty_2, 0, None, out=penalty_2)
+            #     # we calculate the increase in penalties (change in objective function term)
+            #     diff_error[relevant_node] += penalty_2 - penalty_1
+
+            # we make two np arrays:
+            #  * one has shape (1, # patients in r, s)
+            #  * the other has shape (# relevant nodes, 1)
+            # we make the difference of both, which broadcasts both dimensions.
+            # returns the difference per node-patient.
+            # then we get the max 0 of that difference.
+            # and we aggregate over patients to have an array (# relevant nodes)
+            # and then we aggregate the
+            required_arr = np.array(
+                [max(0, req - skill_level__r_s[r, s]) for req in required_l]
+            )
+            required_arr.shape = (1, len(required_arr))
+            proposed_arr = proposed[..., np.newaxis]
+            dif = required_arr - proposed_arr
+            np.clip(dif, 0, None, out=dif)
+            diff_error[relevant_node] += dif.sum(axis=1)
+
         return new_patient_penalty + diff_error
 
     def get_overwork_scores(self, checks, patient_info):
@@ -595,7 +614,7 @@ class GraphTool(object):
             my_rs_nodes = self.nodes__r_s[room, shift]
             my_excess_load = excess_load[prev_nurse, shift]
             excess_load_n1[my_rs_nodes] = my_excess_load
-            set_rs = set(self.nodes__r_s[room, shift])
+            set_rs = set(my_rs_nodes)
             set_pns = set(self.nodes__n_s[prev_nurse, shift])
             # the load will change symmetrically
             # in the cases where the node has a different
@@ -617,11 +636,6 @@ class GraphTool(object):
             relevant_nodes = self.nodes__pos[pos]
             change_load_n2[relevant_nodes] += load
 
-        # current_penalty_n2 = np.zeros_like(max_load_arr)
-        # current_penalty_n1 = np.zeros_like(max_load_arr)
-        # new_penalty_n1 = np.zeros_like(max_load_arr)
-        # new_penalty_n2 = np.zeros_like(max_load_arr)
-
         # nurse1 decreases load
         new_excess_load_n1 = excess_load_n1 - change_load
         # nurse2 increases load
@@ -633,15 +647,6 @@ class GraphTool(object):
 
         np.clip(new_excess_load_n1, 0, None, out=new_excess_load_n1)
         np.clip(new_excess_load_n2, 0, None, out=new_excess_load_n2)
-
-        # current_penalty_n1[excess_load_n1 > 0] = excess_load_n1[excess_load_n1 > 0]
-        # current_penalty_n2[excess_load_n2 > 0] = excess_load_n2[excess_load_n2 > 0]
-        # new_penalty_n1[new_excess_load_n1 > 0] = new_excess_load_n1[
-        #     new_excess_load_n1 > 0
-        # ]
-        # new_penalty_n2[new_excess_load_n2 > 0] = new_excess_load_n2[
-        #     new_excess_load_n2 > 0
-        # ]
 
         return new_excess_load_n1 + new_excess_load_n2 - excess_load_n1 - excess_load_n2
 
@@ -696,6 +701,8 @@ class GraphTool(object):
         n_continuity_care = self.get_continuity_care_scores(checks)
         n_workload = self.get_overwork_scores(checks, patient_info)
         n_skill_level = self.get_skill_level_scores(checks, patient_info, experiment)
+        # TODO: add noise on nodes?
+        #  or sample 50% of nodes and apply a 1-value noise
         # noise = np.random.rand(targets.size)
 
         return (

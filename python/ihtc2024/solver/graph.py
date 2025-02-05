@@ -101,6 +101,7 @@ class Graph(Experiment):
             num_passes = 2
         sum_errors = best_errors
         time_limit = options.get("timeLimit", 60)
+        objective = best_obj
         for i in range(num_passes):
             if i == 1:
                 # if we haven't reached feasibility, we leave
@@ -131,12 +132,27 @@ class Graph(Experiment):
                 else:
                     log.debug(f"Pattern applied")
 
-                objective = self.get_objective()
-                errors = self.check_solution()
-                sum_errors = self.get_sum_errors(errors)
-                best_errors, best_obj, best_sol = self.update_best_solution(
-                    sum_errors, best_errors, objective, best_obj, best_sol
-                )
+                # if the patient was not scheduled and the patient was not added,
+                # then there's nothing to recalculate.
+                recalculate_stats = True
+                if assignment is None and not success:
+                    recalculate_stats = False
+                # also, if the patient was assigned the exact same assignment
+                # we do not recalculate
+                if (
+                    success
+                    and not success.get("nurses")
+                    and assignment == success.get("patient")
+                ):
+                    recalculate_stats = False
+
+                if recalculate_stats:
+                    objective = self.get_objective()
+                    errors = self.check_solution()
+                    sum_errors = self.get_sum_errors(errors)
+                    best_errors, best_obj, best_sol = self.update_best_solution(
+                        sum_errors, best_errors, objective, best_obj, best_sol
+                    )
                 log.debug(f"current={objective}; errors={sum_errors}; best={best_obj}")
 
         # if we have some solution in best_sol, we store it.

@@ -37,10 +37,18 @@ TABLE_KEYS = {
 class Instance(InstanceCore):
     schema = instance
     schema_checks = get_empty_schema()
+    __get_patients_occupants_needs_cache: Dict | None
+    __get_nurse_shift_cache: Dict| None
+    __get_patients_occupants_cache: SuperDict |None
 
     def __init__(self, data: dict):
         data = SuperDict(data).copy_deep().kfilter(lambda k: k in TABLE_KEYS)
         super().__init__(data)
+        # some cache values
+        self.__get_patients_occupants_needs_cache = None
+        self.__get_nurse_shift_cache = None
+        self.__get_patients_occupants_cache = None
+
 
     @property
     def data(self) -> SuperDict:
@@ -289,6 +297,8 @@ class Instance(InstanceCore):
         return self.data["patients"]
 
     def get_patients_occupants(self) -> SuperDict:
+        if self.__get_patients_occupants_cache is not None:
+            return self.__get_patients_occupants_cache
         patients = self.get_patients().copy_deep()
         for k, v in patients.items():
             patients[k]["is_occupant"] = False
@@ -310,10 +320,14 @@ class Instance(InstanceCore):
         return self.data["nurse_shifts"]
 
     def get_nurse_shift(self):
+        if self.__get_nurse_shift_cache is not None:
+            return self.__get_nurse_shift_cache
         nurse_info = self.get_nurse_days().values_tl().copy_deep()
         get_shift = self.get_shift_from_day_shiftype
         nurse_info.vapply_col("shift_pos", lambda v: get_shift(v["day"], v["shift"]))
-        return nurse_info.to_dict(None, indices=["nurse", "shift_pos"], is_list=False)
+        result = nurse_info.to_dict(None, indices=["nurse", "shift_pos"], is_list=False)
+        self.__get_nurse_shift_cache = result
+        return result
 
     def get_agegroups(self):
         return self.data["age_groups"]
@@ -367,11 +381,11 @@ class Instance(InstanceCore):
         return range(first, last + 1)
 
     def get_first_shift_of_day(self, day: int):
-        length_day = len(self.get_shifttypes())
+        length_day = 3
         return day * length_day
 
     def get_last_shift_of_day(self, day: int):
-        length_day = len(self.get_shifttypes())
+        length_day = 3
         return (day + 1) * length_day - 1
 
     def get_shift_from_day_shiftype(self, day: int, shift_type: str):
@@ -391,6 +405,8 @@ class Instance(InstanceCore):
         return shift_types[shift % len(shift_types)]
 
     def get_patients_occupants_needs(self):
+        if self.__get_patients_occupants_needs_cache is not None:
+             return self.__get_patients_occupants_needs_cache
         needs__p_s = self.get_patient_shifts().copy_deep()
         for elem in needs__p_s.values():
             elem["id"] = elem["patient"]
@@ -401,6 +417,7 @@ class Instance(InstanceCore):
             elem["id"] = elem["occupant"]
             elem.pop("occupant")
         needs__p_s.update(needs__o_s)
+        self.__get_patients_occupants_needs_cache = needs__p_s
         return needs__p_s
 
     def get_patients_occupants_available_rooms(self):

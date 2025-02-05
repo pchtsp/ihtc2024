@@ -416,17 +416,16 @@ class Experiment(ExperimentCore):
         return result
 
     def get_all_assignments(self):
-        patients = self.solution.get_patient_assignment()
-        patients = patients.copy_deep()
-        occupants = self.instance.get_occupants()
-        for occupant, content in occupants.items():
-            patients[occupant] = SuperDict(
-                id=content["id"],
-                room=content["room_id"],
+        occupants = self.instance.get_occupants().vapply(
+            lambda v: SuperDict(
+                id=v["id"],
+                room=v["room_id"],
                 admission_day=0,
                 operating_theater=None,
             )
-        return patients
+        )
+        occupants.update(self.solution.get_patient_assignment())
+        return occupants
 
     def run_validator(self, path_of_validator):
         with tempfile.TemporaryDirectory() as tmp:
@@ -450,12 +449,17 @@ class Experiment(ExperimentCore):
         # I need to make the assignments for the patient: room, theater, admission
         # I need to make the assignments for nurses: per shift and room
         # I can start in node 4
+
+        # returns an object with:
+        # 1. details of the patient assignment
+        # 2. *changes* of nurses per room, shift.
         if len(pattern) <= 2:
             # we decided to not take the patient.
-            return 0
+            return {}
 
         assignments = self.solution.get_patient_assignment()
         my_node = 4
+        result = {}
         # occupants are already assigned
         if not patient_info["is_occupant"]:
             # theater_node is position 2 I think
@@ -465,7 +469,7 @@ class Experiment(ExperimentCore):
             admission_day = start_node.shift // 3
             room = start_node.room
             patient = patient_info["id"]
-            assignments[patient] = SuperDict(
+            result["patient"] = assignments[patient] = SuperDict(
                 id=patient,
                 admission_day=admission_day,
                 room=room,
@@ -476,6 +480,7 @@ class Experiment(ExperimentCore):
         nurse_assignments = self.solution.get_nurse_assignment()
         get_shift_type = self.instance.get_shiftype_from_shift
         get_day = self.instance.get_day_from_shift
+        result["nurses"] = {}
         for node in new_nurse_assignments:
             my_data = node.get_data()
             room = my_data["room"]
@@ -483,10 +488,15 @@ class Experiment(ExperimentCore):
             nurse = my_data["nurse"]
             shift_type = get_shift_type(shift)
             day = get_day(shift)
+            old_value = nurse_assignments.pop((room, day, shift_type), {})
             nurse_assignments[room, day, shift_type] = SuperDict(
                 id=nurse, room=room, shift=shift_type, day=day
             )
-        return 1
+            old_nurse = old_value.get("id")
+            if old_nurse != nurse:
+                result["nurses"][room, shift] = (old_nurse, nurse)
+
+        return result
 
     @staticmethod
     def set_log_config(options):
