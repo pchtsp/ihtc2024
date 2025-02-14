@@ -10,6 +10,7 @@ from cornflow_client import ExperimentCore
 import json, tempfile
 import quarto
 import subprocess
+import numpy as np
 
 
 class Experiment(ExperimentCore):
@@ -547,3 +548,54 @@ class Experiment(ExperimentCore):
             )
 
         return self.generate_report_quarto(quarto, report_name=report_name)
+
+    def get_solStats(self):
+        objective = self.get_objective()
+        errors = self.check_solution()
+        return SolStats(errors, objective, self.solution)
+
+    def reset_solution(self):
+        self.solution = Solution.from_dict(
+            SuperDict(patient_assignment=[], nurse_assignment=[])
+        )
+
+
+def get_sum_errors(errors: SuperDict) -> int:
+    return sum(errors.vapply(len).values())
+
+
+class SolStats(object):
+
+    def __init__(
+        self, errors: SuperDict | None, objective: float, solution: Solution | None
+    ):
+        self.errors = errors
+        if errors is not None:
+            self.num_errors = get_sum_errors(errors)
+        else:
+            self.num_errors = np.Inf
+        self.objective = objective
+        self.solution = solution
+
+    def __gt__(self, other):
+        return (self.num_errors, self.objective) > (other.num_errors, other.objective)
+
+    def __lt__(self, other):
+        return (self.num_errors, self.objective) < (other.num_errors, other.objective)
+
+    def copy(self):
+        return SolStats(
+            self.errors, self.objective, self.solution.copy() if self.solution else None
+        )
+
+    def get_sum_errors(self):
+        return self.num_errors
+
+    def get_errors(self):
+        return self.errors
+
+    def get_solution(self):
+        return self.solution
+
+    def get_objective(self):
+        return self.objective

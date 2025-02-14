@@ -36,14 +36,11 @@ class CpSAT2Step(CpSAT):
         WARM_START = options.get("warmStart", False)
         MAX_SAMPLE_OPTIONS = options.get("maxSample", [7, 10, None])
         if VERBOSE:
-            self.print_time("Building of model starts")
-
-        if TIME_WINDOW:
-            if VERBOSE:
+            self.print_time("CpSAT2Step starts")
+            if TIME_WINDOW:
                 self.print_time(
                     f"Time window: start: {TIME_WINDOW['start']} length:{TIME_WINDOW['size']}"
                 )
-            MAX_SAMPLE_OPTIONS = [None]
 
         solver = cp_model.CpSolver()
         status1 = STATUS_UNDEFINED

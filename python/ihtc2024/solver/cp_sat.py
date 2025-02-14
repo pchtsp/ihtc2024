@@ -196,13 +196,17 @@ class CpSAT(Experiment):
         WARM_START = options.get("warmStart", False)
         MAX_SAMPLE_OPTIONS = options.get("maxSample", [None])
         if VERBOSE:
-            self.print_time("Building of model starts")
+            self.print_time("CpSAT starts")
+            if TIME_WINDOW:
+                self.print_time(
+                    f"Time window: start: {TIME_WINDOW['start']} length:{TIME_WINDOW['size']}"
+                )
 
         solver = cp_model.CpSolver()
         # for max_sample in MAX_SAMPLE_OPTIONS:
         options["maxSample"] = MAX_SAMPLE_OPTIONS[0]
         if VERBOSE:
-            self.print_time(f"Phase1: maxSample: {options["maxSample"]}")
+            self.print_time(f"maxSample: {options["maxSample"]}")
 
         model = cp_model.CpModel()
         if VERBOSE:
@@ -256,6 +260,8 @@ class CpSAT(Experiment):
             solver.parameters.fix_variables_to_their_hinted_value = True
         if "warmStart" in options or "timeWindow" in options:
             solver.parameters.repair_hint = True
+        if "gapRel" in options:
+            solver.parameters.relative_gap_limit = options["gapRel"]
         stop_condition = options.get("stop_condition")
         if stop_condition is None:
             solution_callback = None
