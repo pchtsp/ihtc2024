@@ -422,6 +422,7 @@ class Instance(InstanceCore):
         for elem in needs__o_s.values():
             elem["id"] = elem["occupant"]
             elem.pop("occupant")
+            elem.pop("shift")
         needs__p_s.update(needs__o_s)
         self.__get_patients_occupants_needs_cache = needs__p_s
         return needs__p_s

@@ -1,3 +1,4 @@
+from collections import defaultdict
 from pytups import SuperDict, TupList
 import pandas as pd
 import logging as log
@@ -127,57 +128,83 @@ class Experiment(ExperimentCore):
         room_usage = self.get_room_usage()
         p_gender = patients.get_property("gender")
         p_assignment = self.get_all_assignments()
-        gender_err = (
-            room_usage.vapply_col("gender", lambda v: p_gender[v["patient"]])
-            .to_dict("gender", indices=["room", "day"])
-            .vapply(set)
-        )
+        gender_err = defaultdict(set)
+        for v in room_usage:
+            key = v["room"], v["day"]
+            gender_err[key].add(p_gender[v["patient"]])
+        gender_err = SuperDict(gender_err)
+        # gender_err = (
+        #     room_usage.vapply_col("gender", lambda v: p_gender[v["patient"]])
+        #     .to_dict("gender", indices=["room", "day"])
+        #     .vapply(set)
+        # )
         surgeons_cap = self.instance.get_surgeon_capacity().get_property(
             "max_surgery_time"
         )
-        surgeon_use = (
-            p_assignment.values_tl()
-            # only new patients, not occupants
-            .vfilter(lambda v: not patients[v["id"]]["is_occupant"])
-            .copy_deep()
-            .vapply_col("surgeon", lambda v: patients[v["id"]]["surgeon_id"])
-            .vapply_col("duration", lambda v: patients[v["id"]]["surgery_duration"])
-            .to_dict("duration", indices=["surgeon", "admission_day"])
-            .vapply(sum)
-        )
+        surgeon_use = defaultdict(int)
+        for v in p_assignment.values():
+            if patients[v["id"]]["is_occupant"]:
+                continue
+            key = patients[v["id"]]["surgeon_id"], v["admission_day"]
+            surgeon_use[key] += patients[v["id"]]["surgery_duration"]
+        surgeon_use = SuperDict(surgeon_use)
+        # surgeon_use = (
+        #     p_assignment.values_tl()
+        #     # only new patients, not occupants
+        #     .vfilter(lambda v: not patients[v["id"]]["is_occupant"])
+        #     .copy_deep()
+        #     .vapply_col("surgeon", lambda v: patients[v["id"]]["surgeon_id"])
+        #     .vapply_col("duration", lambda v: patients[v["id"]]["surgery_duration"])
+        #     .to_dict("duration", indices=["surgeon", "admission_day"])
+        #     .vapply(sum)
+        # )
         surgeon_overtime = surgeons_cap.kvapply(lambda k, v: surgeon_use.get(k, 0) - v)
         ot_capacity = self.instance.get_operatingtheater_capacity().get_property(
             "availability"
         )
-        ot_use = (
-            p_assignment.values_tl()
-            # only new patients, not occupants
-            .vfilter(lambda v: not patients[v["id"]]["is_occupant"])
-            .copy_deep()
-            .vapply_col("duration", lambda v: patients[v["id"]]["surgery_duration"])
-            .to_dict("duration", indices=["operating_theater", "admission_day"])
-            .vapply(sum)
-        )
+        ot_use = defaultdict(int)
+        for v in p_assignment.values():
+            if patients[v["id"]]["is_occupant"]:
+                continue
+            key = v["operating_theater"], v["admission_day"]
+            ot_use[key] += patients[v["id"]]["surgery_duration"]
+        # ot_use = (
+        #     p_assignment.values_tl()
+        #     # only new patients, not occupants
+        #     .vfilter(lambda v: not patients[v["id"]]["is_occupant"])
+        #     .copy_deep()
+        #     .vapply_col("duration", lambda v: patients[v["id"]]["surgery_duration"])
+        #     .to_dict("duration", indices=["operating_theater", "admission_day"])
+        #     .vapply(sum)
+        # )
         ot_overtime = ot_capacity.kvapply(lambda k, v: ot_use.get(k, 0) - v)
 
         rooms_capacity = self.instance.get_rooms().get_property("capacity")
-        capacity_overuse = (
-            room_usage.to_dict(indices=["room", "day"], result_col=None)
-            .vapply(len)
-            .kvapply(lambda k, v: v - rooms_capacity[k[0]])
+        capacity_overuse = defaultdict(int)
+        for v in room_usage:
+            capacity_overuse[v["room"], v["day"]] += 1
+        capacity_overuse = SuperDict(capacity_overuse).kvapply(
+            lambda k, v: v - rooms_capacity[k[0]]
         )
+        # capacity_overuse = (
+        #     room_usage.to_dict(indices=["room", "day"], result_col=None)
+        #     .vapply(len)
+        #     .kvapply(lambda k, v: v - rooms_capacity[k[0]])
+        # )
         return dict(
             gender=gender_err,
             surgeon_overtime=surgeon_overtime,
             ot_overtime=ot_overtime,
             capacity_overuse=capacity_overuse,
+            # for caching purposes
+            room_usage=room_usage,
         )
 
     def check_solution(self, **params) -> SuperDict[str, SuperDict]:
 
         checks = self.calculate_coupling_checks()
         patients = self.instance.get_patients_occupants()
-        room_usage = self.get_room_usage()
+        room_usage = checks["room_usage"]
         gender_err = checks["gender"].vapply(len).vfilter(lambda v: v > 1)
         surgeon_overtime = checks["surgeon_overtime"].vfilter(lambda v: v > 0)
         ot_overtime = checks["ot_overtime"].vfilter(lambda v: v > 0)
@@ -220,41 +247,64 @@ class Experiment(ExperimentCore):
     def get_objective_terms_raw(self):
         # we leave the coupling constraints as raw as possible
         patients = self.instance.get_patients_occupants()
+        rooms = self.instance.get_rooms()
+        days = self.instance.get_horizon_days()
         room_usage = self.get_room_usage()
         age_groups = self.instance.get_agegroups().get_property("pos")
         p_agegroup = patients.get_property("age_group").vapply(lambda v: age_groups[v])
         # age groups:
-        age_group_err = (
-            room_usage.vapply_col("agegroup", lambda v: p_agegroup[v["patient"]])
-            .to_dict("agegroup", indices=["room", "day"])
-            .vapply(lambda v: (min(v), max(v)))
+        inf_agegroup = max(age_groups.values()) + 1
+        age_group_err = SuperDict(
+            ((r, d), [inf_agegroup, -1]) for r in rooms for d in days
         )
+        for v in room_usage:
+            min_max = age_group_err[v["room"], v["day"]]
+            min_max[0] = min(min_max[0], p_agegroup[v["patient"]])
+            min_max[1] = max(min_max[1], p_agegroup[v["patient"]])
+        age_group_err = age_group_err.vfilter(lambda v: v[1] != -1).vapply(tuple)
+        # room_usage
+        # age_group_err = (
+        #     room_usage.vapply_col("agegroup", lambda v: p_agegroup[v["patient"]])
+        #     .to_dict("agegroup", indices=["room", "day"])
+        #     .vapply(lambda v: (min(v), max(v)))
+        # )
         # minimum skill level
-        nurses = self.instance.get_nurses()
+        skill_level__n = self.instance.get_nurses().get_property("skill_level")
         patient_solution_details = self.get_patient_shift_details()
-        patient_solution_details.values_tl().vapply_col(
-            "nurse_skill", lambda v: nurses[v["nurse"]]["skill_level"]
-        )
+
         # S2
         skill_level_err = patient_solution_details.vapply(
-            lambda v: max(v["skill_level_required"] - v["nurse_skill"], 0)
+            lambda v: v["skill_level_required"] - skill_level__n[v["nurse"]]
         ).vfilter(lambda v: v > 0)
+
         # S3
-        continuity_err = (
-            patient_solution_details.values_tl()
-            .take(["id", "nurse"])
-            .unique()
-            .to_dict(1)
-            .vapply(set)
-        )
+        continuity_err = defaultdict(set)
+        for elem in patient_solution_details.values():
+            key = elem["id"]
+            continuity_err[key].add(elem["nurse"])
+
+        continuity_err = SuperDict(continuity_err)
+
+        # continuity_err = (
+        #     patient_solution_details.values_tl()
+        #     .take(["id", "nurse"])
+        #     .unique2()
+        #     .to_dict(1)
+        #     .vapply(set)
+        # )
 
         # S4
         nurse_shift = self.instance.get_nurse_shift()
-        overwork_nurse = (
-            patient_solution_details.values_tl()
-            .to_dict("workload_produced", indices=["nurse", "shift"])
-            .vapply(sum)
-        )
+        # self.get_nurse_assignment_shift()
+        overwork_nurse = defaultdict(int)
+        for elem in patient_solution_details.values():
+            my_tup = elem["nurse"], elem["shift"]
+            overwork_nurse[my_tup] += elem["workload_produced"]
+        # overwork_nurse = (
+        #     patient_solution_details.values_tl()
+        #     .to_dict("workload_produced", indices=["nurse", "shift"])
+        #     .vapply(sum)
+        # )
         overwork_nurse = nurse_shift.kvapply(
             lambda k, v: overwork_nurse.get(k, 0) - v["max_load"]
         )
@@ -271,14 +321,22 @@ class Experiment(ExperimentCore):
         )
 
         # surgeon transfer [S6]:
-        ots__s_d = (
-            patient_assignment.values_tl()
-            .vfilter(lambda v: v["operating_theater"] is not None)
-            .copy_deep()
-            .vapply_col("surgeon", lambda v: patients[v["id"]]["surgeon_id"])
-            .to_dict("operating_theater", indices=["surgeon", "admission_day"])
-            .vapply(set)
-        )
+        ots__s_d = defaultdict(set)
+        for v in patient_assignment.values():
+            if not v["operating_theater"]:
+                continue
+            ots__s_d[patients[v["id"]]["surgeon_id"], v["admission_day"]].add(
+                v["operating_theater"]
+            )
+        ots__s_d = SuperDict(ots__s_d)
+        # ots__s_d = (
+        #     patient_assignment.values_tl()
+        #     .vfilter(lambda v: v["operating_theater"] is not None)
+        #     .copy_deep()
+        #     .vapply_col("surgeon", lambda v: patients[v["id"]]["surgeon_id"])
+        #     .to_dict("operating_theater", indices=["surgeon", "admission_day"])
+        #     .vapply(set)
+        # )
 
         # admission delay [S7]
         admission_delay = (
@@ -359,13 +417,15 @@ class Experiment(ExperimentCore):
         p_length = self.instance.get_patients_occupants().get_property("length_of_stay")
         p_assignment = self.get_all_assignments()
         for patient, assignment in p_assignment.items():
+            first_day = assignment["admission_day"]
+            room = assignment["room"]
             for pos_d in range(p_length[patient]):
-                day = assignment["admission_day"] + pos_d
+                day = first_day + pos_d
                 if day >= horizon_size:
                     continue
                 elem = SuperDict(
                     patient=patient,
-                    room=assignment["room"],
+                    room=room,
                     day=day,
                 )
                 result.append(elem)
@@ -414,10 +474,13 @@ class Experiment(ExperimentCore):
                     # if we do not have a nurse, we do not have an assignment
                     continue
                 nurse = nurse_shift_assignment[room, shift]["id"]
-                needs__p_s[p, pos].update(
-                    SuperDict(shift=shift, nurse=nurse, room=room, pos_shift=pos)
+                result[p, shift] = SuperDict(
+                    shift=shift,
+                    nurse=nurse,
+                    room=room,
+                    pos_shift=pos,
+                    **needs__p_s[p, pos],
                 )
-                result[p, shift] = needs__p_s[p, pos]
         return result
 
     def get_all_assignments(self):

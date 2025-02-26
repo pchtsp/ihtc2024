@@ -4,6 +4,7 @@
 
 import graph_tool.all as gr
 from pytups import SuperDict
+from collections import defaultdict
 
 from .node import get_source_node, get_sink_node, get_theater_occupant, Node, TYPE
 import logging as log
@@ -508,12 +509,17 @@ class GraphTool(object):
         # get the level required by patients currently in each room, shift
         # only those above the minimum level (who have no penalty by definition)
         # this is a list of all required levels for each room, shift
-        level_required = (
-            checks["shift_details"]
-            .values_tl()
-            .vfilter(lambda v: v["skill_level_required"] > min_required)
-            .to_dict("skill_level_required", indices=["room", "shift"])
-        )
+        level_required = defaultdict(list)
+        for v in checks["shift_details"].values():
+            if v["skill_level_required"] > min_required:
+                level_required[v["room"], v["shift"]].append(v["skill_level_required"])
+
+        # level_required = (
+        #     checks["shift_details"]
+        #     .values_tl()
+        #     .vfilter(lambda v: v["skill_level_required"] > min_required)
+        #     .to_dict("skill_level_required", indices=["room", "shift"])
+        # )
 
         # get the skill level of the node (proposed skill level)
         proposed_skill_level = self.skill_level_vp.get_array()
@@ -565,13 +571,17 @@ class GraphTool(object):
         return new_patient_penalty + diff_error
 
     def get_overwork_scores(self, checks, patient_info):
+        current_workload = defaultdict(int)
         # load by room, shift, nurse
-        current_workload = (
-            checks["shift_details"]
-            .values_tl()
-            .to_dict("workload_produced", indices=["room", "shift", "nurse"])
-            .vapply(sum)
-        )
+        for v in checks["shift_details"].values():
+            key = v["room"], v["shift"], v["nurse"]
+            current_workload[key] += v["workload_produced"]
+        # current_workload = (
+        #     checks["shift_details"]
+        #     .values_tl()
+        #     .to_dict("workload_produced", indices=["room", "shift", "nurse"])
+        #     .vapply(sum)
+        # )
         nodes__n_s = self.pnodes[patient_info["id"]]["nodes__n_s"]
         nodes__r_s = self.pnodes[patient_info["id"]]["nodes__r_s"]
         nodes__pos = self.pnodes[patient_info["id"]]["nodes__pos"]
@@ -661,15 +671,21 @@ class GraphTool(object):
         # here I need to filter those patients who have pos=0
         # as those patients just started in shift s and are thus
         # not changing nurse, yet.
-        patients__r_s = (
-            checks["shift_details"]
-            .values_tl()
-            .vfilter(lambda v: v["pos_shift"] > 0)
-            .to_dict(None, indices=["room", "shift"])
-            .vapply(len)
-            # we add 1 to count the unassigned patient
-            .vapply(lambda v: v + 1)
-        )
+        patients__r_s = defaultdict(int)
+        for v in checks["shift_details"].values():
+            if v["pos_shift"] <= 0:
+                continue
+            patients__r_s[v["room"], v["shift"]] += 1
+        patients__r_s = SuperDict(patients__r_s).vapply(lambda v: v + 1)
+        # patients__r_s = (
+        #     checks["shift_details"]
+        #     .values_tl()
+        #     .vfilter(lambda v: v["pos_shift"] > 0)
+        #     .to_dict(None, indices=["room", "shift"])
+        #     .vapply(len)
+        #     # we add 1 to count the unassigned patient
+        #     .vapply(lambda v: v + 1)
+        # )
         nurse_group = self.nurse_group.get_array()
         weight = np.zeros_like(nurse_group)
         nodes__r_s = self.pnodes[patient_info["id"]]["nodes__r_s"]

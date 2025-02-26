@@ -32,7 +32,6 @@ class GraphTW(CpSAT2, Graph):
         options = dict(options)
         TIME_LIMIT = options.get("timeLimit", 60)
         VERBOSE = options.get("msg", False)
-        # best_errors, best_obj, best_sol = self.initialize_best()
         best_sol_stats = self.initialize_best()
         run = 0
         max_restart_sec = options.get("maxRestartSec", 30)
