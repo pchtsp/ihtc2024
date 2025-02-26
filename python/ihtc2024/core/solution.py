@@ -43,10 +43,17 @@ class Solution(SolutionCore):
     def to_dict(self) -> SuperDict:
         return generic_to_dict(self.data, SOLUTION_TABLE_KEYS)
 
+    def to_json_str(self) -> str:
+        return json.dumps(self.to_dict())
+
     @classmethod
     def from_dict(cls, data: dict) -> "Solution":
         data = generic_from_dict(data, SOLUTION_TABLE_KEYS)
         return cls(data)
+
+    @classmethod
+    def from_json_str(cls, data: str) -> "Solution":
+        return cls.from_dict(json.loads(data))
 
     @classmethod
     def from_ihtc_json(cls, path: str) -> "Solution":

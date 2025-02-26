@@ -60,11 +60,16 @@ class CpSAT(Experiment):
         open__ot_d = my_vars["open__ot_d"]
         max_age_diff = my_vars["max_age_diff"]
         worked__s_ot_d = my_vars["worked__s_ot_d"]
+        assigned__ot_p_d = my_vars["assigned__ot_p_d"]
+        min_age = my_vars["min_age"]
+        max_age = my_vars["max_age"]
+        admission_p = my_vars["admission_p"]
 
         nurse_bin__n_r_s = my_vars.get("nurse_bin__n_r_s")
         nurse_overwork__n_s = my_vars.get("nurse_overwork__n_s")
         nurse_patient__n_p = my_vars.get("nurse_patient__n_p")
         skill_diff__p_s = my_vars.get("skill_diff__p_s")
+        patient_nurse_workload__n_p_s = my_vars.get("patient_nurse_workload__n_p_s")
 
         model.ClearHints()
         my_values = patient_assignments.values_tl()
@@ -73,6 +78,9 @@ class CpSAT(Experiment):
             lambda v: (v[0], rooms[v[1]]["pos"])
         )
         theater_hint = my_values.take(["id", "operating_theater"])
+        th_patient_day_hint = my_values.take(
+            ["operating_theater", "id", "admission_day"]
+        )
 
         def add_hint_binary(my_var, my_tup_list: TupList):
             # all available values are 1
@@ -82,13 +90,14 @@ class CpSAT(Experiment):
                 lambda v: model.AddHint(my_var[v], 0)
             )
 
-        def add_hint_value(my_var, my_dict: SuperDict):
+        def add_hint_value(my_var, my_dict: SuperDict, default_value=0):
             # all available values are 1
             my_dict.kvapply(lambda k, v: model.AddHint(my_var[k], v))
-            # all non available values are 0
-            my_var.keys_tl().set_diff(my_dict.keys()).vapply(
-                lambda v: model.AddHint(my_var[v], 0)
-            )
+            # all non available values are default_value
+            if default_value is not None:
+                my_var.keys_tl().set_diff(my_dict.keys()).vapply(
+                    lambda v: model.AddHint(my_var[v], default_value)
+                )
 
         add_hint_binary(admission_bin, admission_hint)
         add_hint_binary(room_binary, room_hint)
@@ -98,15 +107,30 @@ class CpSAT(Experiment):
             ob_raw["surgeon_transfer"].vapply(list).to_tuplist().take([0, 2, 1])
         )
         add_hint_binary(worked__s_ot_d, transfer_hint)
+        add_hint_binary(assigned__ot_p_d, th_patient_day_hint)
 
         mixed_age_hint = (
             ob_raw["room_mixed_age"]
-            .vapply(lambda v: v[1] - v[0])
             .to_tuplist()
-            .vapply(lambda v: (rooms[v[0]]["pos"], v[1], v[2]))
-            .to_dict(2, is_list=False)
+            .vapply(lambda v: (rooms[v[0]]["pos"], v[1], v[2], v[3]))
+            .to_dict([2, 3], is_list=False)
         )
-        add_hint_value(max_age_diff, mixed_age_hint)
+        mixed_age_diff_hint = mixed_age_hint.vapply(lambda v: v[1] - v[0])
+        mixed_age_max_hint = mixed_age_hint.vapply(lambda v: v[1])
+        mixed_age_min_hint = mixed_age_hint.vapply(lambda v: v[0])
+        add_hint_value(max_age_diff, mixed_age_diff_hint)
+        add_hint_value(min_age, mixed_age_min_hint)
+        add_hint_value(max_age, mixed_age_max_hint)
+        # for selected patients, we use the solution
+        admission_p_hint = admission_hint.to_dict(1, is_list=False)
+        # for unselected optionals, we set the admission day to some value in the domain:
+        admission_p_hint_alt = admission_bin.keys_tl().to_dict(1, is_list=False)
+        admission_p_hint = admission_p_hint_alt.update(admission_p_hint)
+        # we need to filter out the occupants or non variables
+        add_hint_value(
+            admission_p.vfilter(lambda v: isinstance(v, cp_model.IntVar)),
+            admission_p_hint,
+        )
 
         if nurse_bin__n_r_s:
             nurse_hint = (
@@ -135,6 +159,16 @@ class CpSAT(Experiment):
                 .to_dict(2, is_list=False)
             )
             add_hint_value(nurse_overwork__n_s, nurse_overwork_hint)
+
+        if patient_nurse_workload__n_p_s:
+            patient_nurse_workload_hint = (
+                ob_raw["shift_details"]
+                .values_tl()
+                .take(["nurse", "id", "shift", "workload_produced"])
+                .vapply_col(0, lambda v: nurses[v[0]]["pos"])
+                .to_dict(3, is_list=False)
+            )
+            add_hint_value(patient_nurse_workload__n_p_s, patient_nurse_workload_hint)
 
     def get_objective_function(self, model, my_vars):
 
@@ -256,15 +290,19 @@ class CpSAT(Experiment):
         solver.parameters.max_time_in_seconds = options.get("timeLimit", 10)
         if "threads" in options:
             solver.parameters.num_search_workers = options["threads"]
-        if "fixSolution" in options:
+        if options.get("fixSolution", False):
             solver.parameters.fix_variables_to_their_hinted_value = True
-        if "warmStart" in options or "timeWindow" in options:
+        if options.get("warmStart", False) or options.get("timeWindow", False):
             solver.parameters.repair_hint = True
+            # solver.parameters.debug_crash_on_bad_hint = True
         if "gapRel" in options:
             solver.parameters.relative_gap_limit = options["gapRel"]
         stop_condition = options.get("stop_condition")
         if stop_condition is None:
             solution_callback = None
+        # maybe we passed a callback directly
+        elif isinstance(stop_condition, cp_model.CpSolverSolutionCallback):
+            solution_callback = stop_condition
         else:
             if stop_condition.get("ma_size") is None:
                 stop_condition = dict(ma_size=20, min_imp_per_sec=5, length_bad_imp=20)
@@ -303,8 +341,15 @@ class CpSAT(Experiment):
 
         possible_start = possible_start.kvapply(sample_patient)
         available_rooms__p = available_rooms__p.vapply(sample_range)
-        # TODO: if a solution is available, we're sure to add all current assignments
-        #  as possibilities
+        assignments = self.solution.get_patient_assignment()
+        for k, v in assignments.items():
+            my_start = v["admission_day"]
+            my_room = v["room"]
+            if my_start not in possible_start[k]:
+                possible_start[k].append(my_start)
+            if my_room not in available_rooms__p[k]:
+                available_rooms__p[k].append(my_room)
+
         return possible_start, available_rooms__p
 
     def get_nurse_assignment_shift_ints(self):
@@ -801,6 +846,10 @@ class CpSAT(Experiment):
             open__ot_d=open__ot_d,
             worked__s_ot_d=worked__s_ot_d,
             max_age_diff=max_age_diff,
+            assigned__ot_p_d=assigned__ot_p_d,
+            min_age=min_age,
+            max_age=max_age,
+            admission_p=admission_p,
         )
 
         return my_vars
@@ -1000,6 +1049,7 @@ class CpSAT(Experiment):
             nurse_patient__n_p=nurse_patient__n_p,
             nurse_overwork__n_s=nurse_overwork__n_s,
             nurse_bin__n_r_s=nurse_bin__n_r_s,
+            patient_nurse_workload__n_p_s=patient_nurse_workload__n_p_s,
         )
         my_vars.update(more_vars)
         return my_vars
@@ -1101,6 +1151,25 @@ class CpSAT(Experiment):
             .vapply(set)
             .vapply(list)
         )
+
+    @staticmethod
+    def getStopOnUser_callback():
+        return StopOnUserInput()
+
+
+class StopOnUserInput(cp_model.CpSolverSolutionCallback):
+    def __init__(self):
+        cp_model.CpSolverSolutionCallback.__init__(self)
+        self.__stop = False
+
+    def on_solution_callback(self):
+        if self.__stop:
+            # in case I want to re-use the same callback for another solve
+            self.__stop = False
+            self.StopSearch()
+
+    def stop(self):
+        self.__stop = True
 
 
 class StopOnMovingAverageImprovement(cp_model.CpSolverSolutionCallback):

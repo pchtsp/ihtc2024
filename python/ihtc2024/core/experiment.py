@@ -12,6 +12,10 @@ import quarto
 import subprocess
 import numpy as np
 
+curr_dir = os.path.dirname(__file__)
+root_dir = os.path.join(curr_dir, "../")
+PATH_TO_VALIDATOR = os.path.join(root_dir, "../../validator/IHTP_Validator")
+
 
 class Experiment(ExperimentCore):
     schema_checks = load_json(
@@ -428,7 +432,7 @@ class Experiment(ExperimentCore):
         occupants.update(self.solution.get_patient_assignment())
         return occupants
 
-    def run_validator(self, path_of_validator):
+    def run_validator(self, path_of_validator=PATH_TO_VALIDATOR):
         with tempfile.TemporaryDirectory() as tmp:
             path_to_inst = os.path.join(tmp, "input.json")
             path_to_sol = os.path.join(tmp, "output.json")
@@ -559,6 +563,10 @@ class Experiment(ExperimentCore):
             SuperDict(patient_assignment=[], nurse_assignment=[])
         )
 
+    def remove_patient(self, patient_id):
+        # TODO: update parameters for the removed patient
+        return self.solution.unassign_patient(patient_id)
+
 
 def get_sum_errors(errors: SuperDict) -> int:
     return sum(errors.vapply(len).values())
@@ -599,3 +607,9 @@ class SolStats(object):
 
     def get_objective(self):
         return self.objective
+
+    def __repr__(self):
+        return f"Errors: {self.num_errors}, Objective: {self.objective}"
+
+    def __str__(self):
+        return f"Errors: {self.num_errors}, Objective: {self.objective}"

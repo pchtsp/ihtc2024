@@ -15,8 +15,9 @@ if __name__ == "__main__":
                 solver_name=solver,
                 timeLimit=60 * 20,
                 scenarios=[scenario],
-                threads=8,
+                threads=4,
                 report=dict(name="report"),
+                maxRestartSec=120,
             )
     # my_benchmark(
     #     path_to_dir,

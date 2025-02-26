@@ -50,9 +50,9 @@ class CpSAT2Step(CpSAT):
             my_options_1 = dict(options)
             my_options_1["maxSample"] = max_sample
             my_options_1["timeLimit"] = min(TIME_LIMIT, 500)
-            if "logPath" in my_options_1:
-                name, ext = os.path.splitext(my_options_1["logPath"])
-                my_options_1["logPath"] = name + "_pre" + ext
+            # if "logPath" in my_options_1:
+            #     name, ext = os.path.splitext(my_options_1["logPath"])
+            #     my_options_1["logPath"] = name + "_pre" + ext
 
             model = cp_model.CpModel()
             if VERBOSE:
@@ -104,6 +104,10 @@ class CpSAT2Step(CpSAT):
         )
         my_options_2["timeLimit"] = max(my_options_2["timeLimit"], 10)
         my_options_2["fixSolution"] = True
+        # we take out the relative gap
+        my_options_2.pop("gapRel", 0)
+        if VERBOSE:
+            self.print_time(f"Phase2")
         status = self.call_solver(model, solver, my_options_2)
 
         if options.get("msg", False):

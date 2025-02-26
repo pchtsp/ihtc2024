@@ -10,11 +10,11 @@ PATH_TO_VALIDATOR = os.path.join(root_dir, "../../validator/IHTP_Validator")
 from .tests import BaseTestInstance
 
 
-class TestInstance(BaseTestInstance):
+class TestGraphTW(BaseTestInstance):
 
     def test_solve_toy(self):
         my_experim = solvers["graph_tw"](self.instance)
-        my_experim.solve(dict(threads=8, timeLimit=20, msg=True))
+        my_experim.solve(dict(threads=8, timeLimit=20, msg=True, maxRestartSec=1))
         checks = my_experim.check_solution()
 
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
@@ -65,6 +65,15 @@ class TestInstance(BaseTestInstance):
 
         my_experim = solvers["graph_tw"](self.get_test_experiment("i12.json").instance)
         my_experim.solve(dict(threads=8, timeLimit=1200, msg=True))
+        checks = my_experim.check_solution()
+        self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
+        objective = my_experim.get_objective()
+        print(objective)
+
+    def test_solve_competition_instance_i24(self):
+
+        my_experim = solvers["graph_tw"](self.get_test_experiment("i20.json").instance)
+        my_experim.solve(dict(threads=8, timeLimit=1200, msg=True, seed=42))
         checks = my_experim.check_solution()
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         objective = my_experim.get_objective()

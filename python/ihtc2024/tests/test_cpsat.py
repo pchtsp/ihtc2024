@@ -129,6 +129,27 @@ class TestInstance(BaseTestInstance):
         new_objective = my_experim.get_objective()
         self.assertTrue(old_objective, new_objective)
 
+    def test_solved_fixed_4(self):
+        name = f"test04.json"
+        experiment = self.get_solved_experiment(name)
+        print(experiment.check_solution())
+        my_experim = solvers["cpsat"](experiment.instance, experiment.solution)
+        old_objective = my_experim.get_objective()
+        status = my_experim.solve(
+            dict(
+                threads=8,
+                timeLimit=60,
+                msg=True,
+                warmStart=True,
+                fixSolution=True,
+                dump_vars=True,
+            )
+        )
+        # it needs to find a solution:
+        self.assertEqual(status["status"], 1)
+        new_objective = my_experim.get_objective()
+        self.assertTrue(old_objective, new_objective)
+
     def test_solved_fixed(self):
         for name in [f"test0{i}.json" for i in range(1, 6)]:
             print(name)

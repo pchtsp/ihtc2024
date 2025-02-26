@@ -2,57 +2,53 @@ from functools import reduce
 
 import numpy as np
 import pandas as pd
-
+import sys
 from batch_functions import my_table
+from copy import deepcopy
 
 path_to_dir = "/home/pchtsp/Documents/projects/ihtc2024/results"
 path_in = "/home/pchtsp/Documents/projects/ihtc2024/data/"
 
 test_cases = dict(
-    cpsat="2025-01-23T1722-system76-pc",
-    cpsat2step="2025-01-23T2133-system76-pc",
-    graph="2025-01-24T0530-system76-pc",
-    graphtw_2step="2025-01-27T1139-system76-pc",
-    graphtw_both="2025-01-28T1205-system76-pc",
+    g_0204="2025-02-04T1357-pchtsp-meerkat",
+    gtw2_0214="2025-02-14T1010-pchtsp-meerkat",
+    c2s_0215="2025-02-15T0303-pchtsp-meerkat",
+    g_0215="2025-02-15T0051-pchtsp-meerkat",
+    gcp_0220="2025-02-20T1346-pchtsp-meerkat",
     ref="reference",
 )
 competition_cases = dict(
-    cpsat2step="2025-01-23T2313-system76-pc",
-    graph="2025-01-24T0557-system76-pc",
-    graphTW_2step="2025-01-27T2102-system76-pc",
+    g_0204="2025-02-04T1421-pchtsp-meerkat",
+    gtw2_0210="2025-02-10T1551-pchtsp-meerkat",
+    gtw2_0214="2025-02-14T1426-pchtsp-meerkat",
+    c2s_0215="2025-02-15T0514-pchtsp-meerkat",
+    g_0215="2025-02-15T0108-pchtsp-meerkat",
+    gtw_0224="2025-02-24T1523-pchtsp-meerkat",
 )
-if __name__ == "__main__":
 
-    cases = competition_cases
-    # cases = test_cases
-    table_dict = {k: my_table(path_to_dir, v) for k, v in cases.items()}
-    info2 = "errors"
-    info2 = "time"
-    info1 = "value"
 
-    # info1 = "gap"
-    # info2 = None
-
-    for k, v in table_dict.items():
+def get_table(my_tables: dict[str, pd.DataFrame], main_info: str, secondary_info: str):
+    my_tables = deepcopy(my_tables)
+    for k, v in my_tables.items():
         v["method"] = k
-        if info2 == "errors":
+        if secondary_info == "errors":
             my_errors = "[" + v["errors"].astype(str) + "]"
             my_errors[v["errors"] == 0] = ""
             v["value"] = v["objective"].astype(str) + my_errors
         else:
             # if we do not show errors, we do not show KPIs if there are errors
             v.loc[v["errors"] > 0, "objective"] = np.NAN
-        if info2 == "time":
+        if secondary_info == "time":
             v.loc[pd.isna(v["time"]), "time"] = -1
             my_time = "(" + v["time"].astype(int).astype(str) + ")"
             v["value"] = v["objective"].astype(str) + my_time
-        if info2 is None:
+        if secondary_info is None:
             v["value"] = v["objective"]
-        table_dict[k] = v[["name", "method", "value"]]
+        my_tables[k] = v[["name", "method", "value"]]
 
-    df_all = pd.concat(table_dict.values(), axis=0)
+    df_all = pd.concat(my_tables.values(), axis=0)
 
-    if info1 == "gap":
+    if main_info == "gap":
         df_all = pd.merge(
             df_all, df_all.groupby("name").value.min().rename("min"), on="name"
         )
@@ -61,13 +57,37 @@ if __name__ == "__main__":
         )
         df_all.loc[df_all["gap"] == "0.0", "gap"] = "*"
         aggfunc = lambda x: reduce(lambda a, b: a + " " + b, x)
-    elif info2 is not None:
+    elif secondary_info is not None:
         # we're dealing with a string
         aggfunc = lambda x: " ".join(x)
     else:
         aggfunc = np.mean
     df_merged = pd.pivot_table(
-        df_all, index="name", columns="method", values=info1, aggfunc=aggfunc
+        df_all, index="name", columns="method", values=main_info, aggfunc=aggfunc
     )
+    return df_merged
+
+
+if __name__ == "__main__":
+
+    cases = competition_cases
+    cases = test_cases
+
+    if len(sys.argv) > 1:
+        cases = competition_cases
+        if sys.argv[1] == "t":
+            cases = test_cases
+    info2 = "time"
+    info1 = "value"
+    if len(sys.argv) > 2:
+        cases = competition_cases
+        if sys.argv[2] == "g":
+            info1 = "gap"
+            info2 = None
+
+    # info2 = "errors"
+
+    table_dict = {k: my_table(path_to_dir, v) for k, v in cases.items()}
+    df_merged = get_table(table_dict, info1, info2)
 
     print(df_merged)

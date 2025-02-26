@@ -15,7 +15,11 @@ timefold
 pydantic
 
 # quarto
+quarto-cli
 plotnine
 quarto
 papermill
 jupyter
+
+# desktop
+pyside6

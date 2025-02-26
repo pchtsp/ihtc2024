@@ -38,8 +38,8 @@ class Instance(InstanceCore):
     schema = instance
     schema_checks = get_empty_schema()
     __get_patients_occupants_needs_cache: Dict | None
-    __get_nurse_shift_cache: Dict| None
-    __get_patients_occupants_cache: SuperDict |None
+    __get_nurse_shift_cache: Dict | None
+    __get_patients_occupants_cache: SuperDict | None
 
     def __init__(self, data: dict):
         data = SuperDict(data).copy_deep().kfilter(lambda k: k in TABLE_KEYS)
@@ -48,7 +48,6 @@ class Instance(InstanceCore):
         self.__get_patients_occupants_needs_cache = None
         self.__get_nurse_shift_cache = None
         self.__get_patients_occupants_cache = None
-
 
     @property
     def data(self) -> SuperDict:
@@ -71,6 +70,13 @@ class Instance(InstanceCore):
 
     def to_dict(self) -> SuperDict:
         return generic_to_dict(self.data, TABLE_KEYS)
+
+    def to_json_str(self) -> str:
+        return json.dumps(self.to_dict())
+
+    @classmethod
+    def from_json_str(cls, data: str) -> "Instance":
+        return cls.from_dict(json.loads(data))
 
     @classmethod
     def from_dict(cls, data: Dict[str, List[dict]]) -> "Instance":
@@ -406,7 +412,7 @@ class Instance(InstanceCore):
 
     def get_patients_occupants_needs(self):
         if self.__get_patients_occupants_needs_cache is not None:
-             return self.__get_patients_occupants_needs_cache
+            return self.__get_patients_occupants_needs_cache
         needs__p_s = self.get_patient_shifts().copy_deep()
         for elem in needs__p_s.values():
             elem["id"] = elem["patient"]

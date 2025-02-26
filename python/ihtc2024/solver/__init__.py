@@ -1,16 +1,22 @@
 from typing import Union, Type
 from ..core import Experiment
-from .naive import NAIVE
 from .cp_sat import CpSAT
 from .cp_sat_2step import CpSAT2Step
 from .graph import Graph
 from .graph_tw import GraphTW
+from .graph_GRASP import GraphGRASP
+from .graph_cpsat import GraphCP
 
 # TODO: timefold imports jpype and it breaks the multiprocessing of python
 # from .timefold import TimefoldPy
 
 solvers = dict(
-    naive=NAIVE, cpsat=CpSAT, graph=Graph, graph_tw=GraphTW, cpsat2step=CpSAT2Step
+    cpsat=CpSAT,
+    graph=Graph,
+    graph_tw=GraphTW,
+    cpsat2step=CpSAT2Step,
+    grahpGRASP=GraphGRASP,
+    graphCP=GraphCP,
 )
 
 

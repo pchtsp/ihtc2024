@@ -13,6 +13,7 @@ from cornflow_client.constants import (
     SOLUTION_STATUS_FEASIBLE,
     SOLUTION_STATUS_INFEASIBLE,
     STATUS_FEASIBLE,
+    STATUS_TIME_LIMIT,
 )
 
 import logging as log
@@ -24,9 +25,6 @@ class GraphTW(CpSAT2, Graph):
         CpSAT.__init__(self, instance, solution)
         Graph.__init__(self, instance, solution)
 
-    def elapsed_time(self):
-        return round(time.time() - self.init)
-
     def solve(self, options: dict = None) -> dict:
         options["seed"] = options.get("seed", 42)
         rn.seed(options["seed"])
@@ -37,21 +35,24 @@ class GraphTW(CpSAT2, Graph):
         # best_errors, best_obj, best_sol = self.initialize_best()
         best_sol_stats = self.initialize_best()
         run = 0
-        max_restart_sec = 5
+        max_restart_sec = options.get("maxRestartSec", 30)
+        status = STATUS_TIME_LIMIT
+        # TODO: implement the stop condition for callback
+        #  do we need two callbacks?
         while True:
             # we found a good feasible solution with Graph:
             # unless we have a problem finding a feasible solution
             if run == 0:
-                # we take at most 2 mins to find a nice solution
+                # we take at most X seconds to find a nice solution
                 my_time = time.time()
                 while time.time() - my_time < max_restart_sec:
-                    status = Graph.solve(self, options)
+                    Graph.solve(self, options)
                     curr_sol_stats = self.get_solStats()
                     # if a good solution we keep
                     if curr_sol_stats < best_sol_stats:
                         best_sol_stats = curr_sol_stats.copy()
                     # we restart from scratch
-                    # or we just take out half the patients?
+                    # TODO: or we just take out half the patients?
                     self.reset_solution()
                     # print(f"Best: {best_sol_stats.get_objective()}")
                 # we keep the best of all
@@ -59,7 +60,7 @@ class GraphTW(CpSAT2, Graph):
                 self.solution = curr_sol_stats.solution
             elif best_sol_stats.get_sum_errors() == 0:
                 # we just apply the graph to improve
-                status = Graph.solve(self, options)
+                Graph.solve(self, options)
             # we find good candidates for time windows:
             curr_sol_stats = self.get_solStats()
             if curr_sol_stats < best_sol_stats:
@@ -130,13 +131,6 @@ class GraphTW(CpSAT2, Graph):
             if self.elapsed_time() >= TIME_LIMIT:
                 break
             run += 1
-        my_sol = curr_sol_stats
-        if best_sol_stats.solution is not None:
-            my_sol = best_sol_stats
-        self.solution = my_sol.get_solution()
-        sum_errors = my_sol.get_sum_errors()
-        if sum_errors > 0:
-            status_sol = SOLUTION_STATUS_INFEASIBLE
-        else:
-            status_sol = SOLUTION_STATUS_FEASIBLE
-        return dict(status_sol=status_sol, status=STATUS_FEASIBLE)
+        return self.check_stats_update_solution(
+            curr_sol_stats, best_sol_stats, options, status=status
+        )

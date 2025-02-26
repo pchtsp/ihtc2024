@@ -16,7 +16,7 @@ PATH_TO_VALIDATOR = os.path.join(root_dir, "../../validator/IHTP_Validator")
 from .tests import BaseTestInstance
 
 
-class TestInstance(BaseTestInstance):
+class TestGraph(BaseTestInstance):
 
     def test_solve_toy_graph(self):
         my_experim = solvers["graph"](self.instance)
@@ -26,11 +26,16 @@ class TestInstance(BaseTestInstance):
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         objective = my_experim.get_objective()
         print(objective)
-        my_experim.run_validator(PATH_TO_VALIDATOR)
+        my_experim.run_validator()
 
     def test_solve_test01(self):
         my_experim = self.get_solved_experiment("test04.json")
         my_experim = solvers["graph"](my_experim.instance)
+        my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
+
+    def test_solve_warmstart_test04(self):
+        my_experim = self.get_solved_experiment("test04.json")
+        my_experim = solvers["graph"](my_experim.instance, my_experim.solution)
         my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
 
     def test_group_nurses(self):
@@ -65,6 +70,11 @@ class TestInstance(BaseTestInstance):
     def test_profile_test29_graphiterations(self):
         my_experim = self.get_test_experiment("i29.json")
         my_experim = solvers["graph"](my_experim.instance, group_nurses=False)
+        my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
+
+    def test_profile_test29(self):
+        my_experim = self.get_test_experiment("i29.json")
+        my_experim = solvers["graph"](my_experim.instance)
         my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
 
     def test_group_nurses_larger(self):

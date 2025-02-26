@@ -1,0 +1,319 @@
+# -*- coding: utf-8 -*-
+
+################################################################################
+## Form generated from reading UI file 'gui.ui'
+##
+## Created by: Qt User Interface Compiler version 6.8.2
+##
+## WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
+
+from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
+    QMetaObject, QObject, QPoint, QRect,
+    QSize, QTime, QUrl, Qt)
+from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
+    QCursor, QFont, QFontDatabase, QGradient,
+    QIcon, QImage, QKeySequence, QLinearGradient,
+    QPainter, QPalette, QPixmap, QRadialGradient,
+    QTransform)
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout,
+    QHBoxLayout, QLabel, QLayout, QLineEdit,
+    QMainWindow, QMenu, QMenuBar, QPushButton,
+    QSizePolicy, QStatusBar, QTabWidget, QTextBrowser,
+    QVBoxLayout, QWidget)
+
+class Ui_MainWindow(object):
+    def setupUi(self, MainWindow):
+        if not MainWindow.objectName():
+            MainWindow.setObjectName(u"MainWindow")
+        self.actionOpen_from = QAction(MainWindow)
+        self.actionOpen_from.setObjectName(u"actionOpen_from")
+        self.actionExit = QAction(MainWindow)
+        self.actionExit.setObjectName(u"actionExit")
+        self.actionSave = QAction(MainWindow)
+        self.actionSave.setObjectName(u"actionSave")
+        self.actionSave_As = QAction(MainWindow)
+        self.actionSave_As.setObjectName(u"actionSave_As")
+        self.centralwidget = QWidget(MainWindow)
+        self.centralwidget.setObjectName(u"centralwidget")
+        self.horizontalLayout = QHBoxLayout(self.centralwidget)
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
+        self.widget = QWidget(self.centralwidget)
+        self.widget.setObjectName(u"widget")
+        self.verticalLayout_17 = QVBoxLayout(self.widget)
+        self.verticalLayout_17.setObjectName(u"verticalLayout_17")
+        self.verticalLayout_17.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        self.horizontalLayout_13 = QHBoxLayout()
+        self.horizontalLayout_13.setObjectName(u"horizontalLayout_13")
+        self.verticalLayout_6 = QVBoxLayout()
+        self.verticalLayout_6.setSpacing(2)
+        self.verticalLayout_6.setObjectName(u"verticalLayout_6")
+        self.chooseFile = QPushButton(self.widget)
+        self.chooseFile.setObjectName(u"chooseFile")
+        font = QFont()
+        font.setPointSize(10)
+        self.chooseFile.setFont(font)
+
+        self.verticalLayout_6.addWidget(self.chooseFile)
+
+        self.exportSolution = QPushButton(self.widget)
+        self.exportSolution.setObjectName(u"exportSolution")
+        self.exportSolution.setFont(font)
+
+        self.verticalLayout_6.addWidget(self.exportSolution)
+
+        self.exportSolution_to = QPushButton(self.widget)
+        self.exportSolution_to.setObjectName(u"exportSolution_to")
+        self.exportSolution_to.setFont(font)
+
+        self.verticalLayout_6.addWidget(self.exportSolution_to)
+
+
+        self.horizontalLayout_13.addLayout(self.verticalLayout_6)
+
+        self.excel_path = QLabel(self.widget)
+        self.excel_path.setObjectName(u"excel_path")
+        self.excel_path.setMinimumSize(QSize(300, 0))
+        self.excel_path.setBaseSize(QSize(0, 0))
+        self.excel_path.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse|Qt.TextInteractionFlag.TextEditable)
+
+        self.horizontalLayout_13.addWidget(self.excel_path)
+
+        self.verticalLayout_16 = QVBoxLayout()
+        self.verticalLayout_16.setObjectName(u"verticalLayout_16")
+        self.instCheck = QLabel(self.widget)
+        self.instCheck.setObjectName(u"instCheck")
+        font1 = QFont()
+        font1.setBold(True)
+        self.instCheck.setFont(font1)
+        self.instCheck.setStyleSheet(u"QLabel { color : red; }")
+        self.instCheck.setTextFormat(Qt.TextFormat.AutoText)
+
+        self.verticalLayout_16.addWidget(self.instCheck)
+
+        self.solCheck = QLabel(self.widget)
+        self.solCheck.setObjectName(u"solCheck")
+        self.solCheck.setFont(font1)
+        self.solCheck.setStyleSheet(u"QLabel { color : red; }")
+
+        self.verticalLayout_16.addWidget(self.solCheck)
+
+
+        self.horizontalLayout_13.addLayout(self.verticalLayout_16)
+
+
+        self.verticalLayout_17.addLayout(self.horizontalLayout_13)
+
+        self.tabWidget = QTabWidget(self.widget)
+        self.tabWidget.setObjectName(u"tabWidget")
+        self.Config = QWidget()
+        self.Config.setObjectName(u"Config")
+        self.horizontalLayout_10 = QHBoxLayout(self.Config)
+        self.horizontalLayout_10.setObjectName(u"horizontalLayout_10")
+        self.verticalLayout_13 = QVBoxLayout()
+        self.verticalLayout_13.setObjectName(u"verticalLayout_13")
+        self.formLayout_3 = QFormLayout()
+        self.formLayout_3.setObjectName(u"formLayout_3")
+        self.formLayout_3.setSizeConstraint(QLayout.SizeConstraint.SetMaximumSize)
+        self.formLayout_3.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self.max_timeLabel = QLabel(self.Config)
+        self.max_timeLabel.setObjectName(u"max_timeLabel")
+
+        self.formLayout_3.setWidget(1, QFormLayout.LabelRole, self.max_timeLabel)
+
+        self.max_time = QLineEdit(self.Config)
+        self.max_time.setObjectName(u"max_time")
+
+        self.formLayout_3.setWidget(1, QFormLayout.FieldRole, self.max_time)
+
+        self.solverLabel = QLabel(self.Config)
+        self.solverLabel.setObjectName(u"solverLabel")
+
+        self.formLayout_3.setWidget(2, QFormLayout.LabelRole, self.solverLabel)
+
+        self.solver = QComboBox(self.Config)
+        self.solver.setObjectName(u"solver")
+        self.solver.setEditable(True)
+
+        self.formLayout_3.setWidget(2, QFormLayout.FieldRole, self.solver)
+
+        self.log_levelLabel = QLabel(self.Config)
+        self.log_levelLabel.setObjectName(u"log_levelLabel")
+
+        self.formLayout_3.setWidget(3, QFormLayout.LabelRole, self.log_levelLabel)
+
+        self.log_level = QComboBox(self.Config)
+        self.log_level.setObjectName(u"log_level")
+        self.log_level.setEditable(True)
+
+        self.formLayout_3.setWidget(3, QFormLayout.FieldRole, self.log_level)
+
+        self.reuse_solLabel = QLabel(self.Config)
+        self.reuse_solLabel.setObjectName(u"reuse_solLabel")
+
+        self.formLayout_3.setWidget(4, QFormLayout.LabelRole, self.reuse_solLabel)
+
+        self.reuse_sol = QCheckBox(self.Config)
+        self.reuse_sol.setObjectName(u"reuse_sol")
+
+        self.formLayout_3.setWidget(4, QFormLayout.FieldRole, self.reuse_sol)
+
+
+        self.verticalLayout_13.addLayout(self.formLayout_3)
+
+        self.horizontalLayout_12 = QHBoxLayout()
+        self.horizontalLayout_12.setObjectName(u"horizontalLayout_12")
+        self.generateSolution = QPushButton(self.Config)
+        self.generateSolution.setObjectName(u"generateSolution")
+
+        self.horizontalLayout_12.addWidget(self.generateSolution)
+
+        self.stopExecution = QPushButton(self.Config)
+        self.stopExecution.setObjectName(u"stopExecution")
+        self.stopExecution.setEnabled(False)
+
+        self.horizontalLayout_12.addWidget(self.stopExecution)
+
+
+        self.verticalLayout_13.addLayout(self.horizontalLayout_12)
+
+        self.solution_log = QTextBrowser(self.Config)
+        self.solution_log.setObjectName(u"solution_log")
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        sizePolicy.setHorizontalStretch(1)
+        sizePolicy.setVerticalStretch(1)
+        sizePolicy.setHeightForWidth(self.solution_log.sizePolicy().hasHeightForWidth())
+        self.solution_log.setSizePolicy(sizePolicy)
+
+        self.verticalLayout_13.addWidget(self.solution_log)
+
+
+        self.horizontalLayout_10.addLayout(self.verticalLayout_13)
+
+        self.tabWidget.addTab(self.Config, "")
+        self.Report_4 = QWidget()
+        self.Report_4.setObjectName(u"Report_4")
+        self.verticalLayoutWidget_5 = QWidget(self.Report_4)
+        self.verticalLayoutWidget_5.setObjectName(u"verticalLayoutWidget_5")
+        self.verticalLayoutWidget_5.setGeometry(QRect(10, 10, 621, 281))
+        self.verticalLayout_15 = QVBoxLayout(self.verticalLayoutWidget_5)
+        self.verticalLayout_15.setObjectName(u"verticalLayout_15")
+        self.verticalLayout_15.setContentsMargins(0, 0, 0, 0)
+        self.formLayout = QFormLayout()
+        self.formLayout.setObjectName(u"formLayout")
+        self.objectiveLabel = QLabel(self.verticalLayoutWidget_5)
+        self.objectiveLabel.setObjectName(u"objectiveLabel")
+
+        self.formLayout.setWidget(0, QFormLayout.LabelRole, self.objectiveLabel)
+
+        self.objectiveLineEdit = QLineEdit(self.verticalLayoutWidget_5)
+        self.objectiveLineEdit.setObjectName(u"objectiveLineEdit")
+        self.objectiveLineEdit.setReadOnly(True)
+
+        self.formLayout.setWidget(0, QFormLayout.FieldRole, self.objectiveLineEdit)
+
+        self.errorsLabel = QLabel(self.verticalLayoutWidget_5)
+        self.errorsLabel.setObjectName(u"errorsLabel")
+
+        self.formLayout.setWidget(1, QFormLayout.LabelRole, self.errorsLabel)
+
+        self.errorsLineEdit = QLineEdit(self.verticalLayoutWidget_5)
+        self.errorsLineEdit.setObjectName(u"errorsLineEdit")
+        self.errorsLineEdit.setReadOnly(True)
+
+        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.errorsLineEdit)
+
+
+        self.verticalLayout_15.addLayout(self.formLayout)
+
+        self.horizontalLayout_14 = QHBoxLayout()
+        self.horizontalLayout_14.setObjectName(u"horizontalLayout_14")
+        self.checkSolution = QPushButton(self.verticalLayoutWidget_5)
+        self.checkSolution.setObjectName(u"checkSolution")
+
+        self.horizontalLayout_14.addWidget(self.checkSolution)
+
+        self.generateReport = QPushButton(self.verticalLayoutWidget_5)
+        self.generateReport.setObjectName(u"generateReport")
+
+        self.horizontalLayout_14.addWidget(self.generateReport)
+
+
+        self.verticalLayout_15.addLayout(self.horizontalLayout_14)
+
+        self.solution_log_2 = QTextBrowser(self.verticalLayoutWidget_5)
+        self.solution_log_2.setObjectName(u"solution_log_2")
+
+        self.verticalLayout_15.addWidget(self.solution_log_2)
+
+        self.tabWidget.addTab(self.Report_4, "")
+
+        self.verticalLayout_17.addWidget(self.tabWidget)
+
+
+        self.horizontalLayout.addWidget(self.widget)
+
+        MainWindow.setCentralWidget(self.centralwidget)
+        self.menubar = QMenuBar(MainWindow)
+        self.menubar.setObjectName(u"menubar")
+        self.menubar.setGeometry(QRect(0, 0, 698, 23))
+        self.menuFile = QMenu(self.menubar)
+        self.menuFile.setObjectName(u"menuFile")
+        MainWindow.setMenuBar(self.menubar)
+        self.statusbar = QStatusBar(MainWindow)
+        self.statusbar.setObjectName(u"statusbar")
+        MainWindow.setStatusBar(self.statusbar)
+
+        self.menubar.addAction(self.menuFile.menuAction())
+        self.menuFile.addAction(self.actionOpen_from)
+        self.menuFile.addSeparator()
+        self.menuFile.addAction(self.actionSave)
+        self.menuFile.addAction(self.actionSave_As)
+        self.menuFile.addSeparator()
+        self.menuFile.addAction(self.actionExit)
+
+        self.retranslateUi(MainWindow)
+
+        self.chooseFile.setDefault(False)
+        self.exportSolution.setDefault(False)
+        self.exportSolution_to.setDefault(False)
+        self.tabWidget.setCurrentIndex(0)
+        self.generateSolution.setDefault(False)
+
+
+        QMetaObject.connectSlotsByName(MainWindow)
+    # setupUi
+
+    def retranslateUi(self, MainWindow):
+        MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"MyOptimApp", None))
+        self.actionOpen_from.setText(QCoreApplication.translate("MainWindow", u"Open from...", None))
+        self.actionExit.setText(QCoreApplication.translate("MainWindow", u"Exit", None))
+        self.actionSave.setText(QCoreApplication.translate("MainWindow", u"Export", None))
+        self.actionSave_As.setText(QCoreApplication.translate("MainWindow", u"Export As...", None))
+        self.chooseFile.setText(QCoreApplication.translate("MainWindow", u"Open", None))
+        self.exportSolution.setText(QCoreApplication.translate("MainWindow", u"Save", None))
+        self.exportSolution_to.setText(QCoreApplication.translate("MainWindow", u"Save As", None))
+        self.excel_path.setText("")
+        self.instCheck.setText(QCoreApplication.translate("MainWindow", u"No instance loaded", None))
+        self.solCheck.setText(QCoreApplication.translate("MainWindow", u"No solution loaded", None))
+#if QT_CONFIG(tooltip)
+        self.Config.setToolTip(QCoreApplication.translate("MainWindow", u"<html><head/><body><p>configuration</p></body></html>", None))
+#endif // QT_CONFIG(tooltip)
+        self.max_timeLabel.setText(QCoreApplication.translate("MainWindow", u"Max solving time                                                                                                         ", None))
+        self.max_time.setText(QCoreApplication.translate("MainWindow", u"60", None))
+        self.max_time.setPlaceholderText(QCoreApplication.translate("MainWindow", u"60", None))
+        self.solverLabel.setText(QCoreApplication.translate("MainWindow", u"Solver", None))
+        self.log_levelLabel.setText(QCoreApplication.translate("MainWindow", u"Logging level", None))
+        self.log_level.setCurrentText(QCoreApplication.translate("MainWindow", u"INFO", None))
+        self.reuse_solLabel.setText(QCoreApplication.translate("MainWindow", u"Reuse previous solution", None))
+        self.generateSolution.setText(QCoreApplication.translate("MainWindow", u"Generate plan", None))
+        self.stopExecution.setText(QCoreApplication.translate("MainWindow", u"Stop execution", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.Config), QCoreApplication.translate("MainWindow", u"Solve", None))
+        self.objectiveLabel.setText(QCoreApplication.translate("MainWindow", u"Objective", None))
+        self.errorsLabel.setText(QCoreApplication.translate("MainWindow", u"Errors", None))
+        self.checkSolution.setText(QCoreApplication.translate("MainWindow", u"Check solution", None))
+        self.generateReport.setText(QCoreApplication.translate("MainWindow", u"Generate report", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.Report_4), QCoreApplication.translate("MainWindow", u"Statistics", None))
+        self.menuFile.setTitle(QCoreApplication.translate("MainWindow", u"File", None))
+    # retranslateUi
+
