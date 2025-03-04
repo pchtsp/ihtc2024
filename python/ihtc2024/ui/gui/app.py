@@ -1,7 +1,6 @@
-import shutil
 import sys
 from PySide6 import QtWidgets, QtCore, QtGui
-from cornflow_client import ApplicationCore
+from cornflow_client import ApplicationCore, InstanceCore, SolutionCore
 from cornflow_client.constants import (
     SOLUTION_STATUS_FEASIBLE,
     SOLUTION_STATUS_INFEASIBLE,
@@ -12,18 +11,35 @@ import gui
 
 from typing import Type
 import tempfile
-from worker import Worker
-from worker2 import Worker2
+from optimworker import OptimWorker
+from repWorker import RepWorker
+from log_tailer import LogTailer
 
-# import faulthandler
+import faulthandler
+import copy
 
 
 class MainWindow_EXCEC(object):
+    opt_worker: OptimWorker
+    rep_worker: RepWorker
+    my_log_tailer: LogTailer
+    # rpt_worker:
+    my_app: ApplicationCore
+    options: dict
+    app: QtWidgets.QApplication
+    ui: gui.Ui_MainWindow
+    excel_path: str
+    Instance: Type[InstanceCore]
+    Solution: Type[SolutionCore]
+    instance: InstanceCore
+    solution: SolutionCore
 
     def __init__(self, App: Type[ApplicationCore], options: dict):
         # handle solving in thread
-        self.thread = None
-        self.worker = None
+        # self.thread = None
+        self.opt_worker = None
+        self.rep_worker = None
+        self.my_log_tailer = None
 
         self.my_app = App()
         self.Experiment = self.my_app.get_solver(self.my_app.get_default_solver_name())
@@ -45,7 +61,8 @@ class MainWindow_EXCEC(object):
 
         self.ui = gui.Ui_MainWindow()
         self.ui.setupUi(MainWindow)
-        self.ui.excel_path.setText("")
+        self.excel_path = None
+        # self.ui.excel_path.setText("")
 
         self.instance = None
         self.solution = None
@@ -60,10 +77,7 @@ class MainWindow_EXCEC(object):
 
         # below buttons:
         self.ui.chooseFile.clicked.connect(self.choose_file)
-        self.ui.generateSolution.clicked.connect(self.generate_solution)
-        # self.ui.generateSolution_missions.clicked.connect(
-        #     self.generate_solution_missions
-        # )
+        self.ui.loadTest.clicked.connect(self.load_test)
 
         self.ui.checkSolution.clicked.connect(self.check_solution)
         self.ui.exportSolution.clicked.connect(self.export_solution)
@@ -82,6 +96,15 @@ class MainWindow_EXCEC(object):
 
         MainWindow.show()
         sys.exit(self.app.exec())
+
+    def load_test(self):
+
+        test_cases = self.my_app.test_cases
+        my_case = test_cases[0]
+        self.instance = self.Instance.from_dict(my_case["instance"])
+        if my_case["solution"]:
+            self.solution = self.Solution.from_dict(my_case["solution"])
+        self.update_ui()
 
     def update_options(self):
         try:
@@ -110,6 +133,7 @@ class MainWindow_EXCEC(object):
             self.ui.solCheck.setStyleSheet("QLabel { color : green; }")
             self.ui.reuse_sol.setEnabled(True)
             self.ui.reuse_sol.setChecked(True)
+        # self.toggle_execution()
         return 1
 
     def choose_file(self):
@@ -122,13 +146,14 @@ class MainWindow_EXCEC(object):
         # if os.path.isfile(dirName):
         #     dirName = os.path.dirname(dirName)
         # exec.udpdate_case_read_options(self.options, dirName + "/")
-        self.ui.excel_path.setText(actual_file_name)
+        self.excel_path = actual_file_name
+        # self.ui.excel_path.setText(actual_file_name)
         self.load_template(actual_file_name)
         self.update_ui()
         return True
 
     def read_dir(self):
-        self.load_template(self.ui.excel_path.text())
+        self.load_template(self.excel_path)
 
     def show_message(self, title, text, icon="critical"):
         msg = QtWidgets.QMessageBox()
@@ -205,7 +230,7 @@ class MainWindow_EXCEC(object):
         return
 
     def generate_solution(self):
-        # faulthandler.enable()
+        faulthandler.enable()
         options = dict(self.options)
         if not self.instance:
             self.show_message(
@@ -222,30 +247,32 @@ class MainWindow_EXCEC(object):
         solution = None
         if self.ui.reuse_sol.isChecked():
             solution = self.solution
+            options["warmStart"] = True
 
         tmpdirname = tempfile.mkdtemp()
         options["logPath"] = os.path.join(tmpdirname, "log.txt")
         options["msg"] = True
-        self.my_log_tailer = LogTailer(
-            options["logPath"], self.ui.solution_log, interval=100
-        )
         solution_json_str = None
         if solution is not None:
             solution_json_str = solution.to_json_str()
-        self.worker = Worker2(
-            self.my_app, self.instance.to_json_str(), solution_json_str, options
+        self.opt_worker = OptimWorker(
+            copy.deepcopy(self.my_app),
+            self.instance.to_json_str(),
+            solution_json_str,
+            copy.deepcopy(options),
         )
-        self.worker.setObjectName("test thread")
-        self.ui.stopExecution.setEnabled(True)
-        self.ui.generateSolution.setEnabled(False)
+        self.opt_worker.setObjectName("test thread")
 
-        self.worker.finished.connect(self.get_solution)
-        self.worker.started.connect(self.my_log_tailer.start)
-        self.worker.finished.connect(self.my_log_tailer.stop)
-        self.ui.stopExecution.clicked.connect(self.worker.kill)
+        self.opt_worker.finished.connect(self.get_solution)
+        self.my_log_tailer = LogTailer(
+            options["logPath"], self.ui.solution_log, interval=100
+        )
+        self.opt_worker.started.connect(self.my_log_tailer.start)
+        self.opt_worker.finished.connect(self.my_log_tailer.stop)
 
         # new Worker:
-        self.worker.start()
+        self.opt_worker.start()
+        self.update_ui()
 
         # old Worker:
         # self.thread = QtCore.QThread()
@@ -264,18 +291,12 @@ class MainWindow_EXCEC(object):
 
     @QtCore.Slot(bool, int, str)
     def get_solution(self, success, sol_status, soldata):
-        # print(f"window: {QtCore.QThread.currentThread().objectName()}")
-        # print("get_solution_1")
         if not success:
             return 0
         if sol_status != SOLUTION_STATUS_FEASIBLE or not soldata:
             return 0
         self.solution = self.Solution.from_json_str(soldata)
-        # print("get_solution_2")
-        self.ui.stopExecution.setEnabled(False)
-        self.ui.generateSolution.setEnabled(True)
         self.update_ui()
-        # print("get_solution_3")
         return 1
 
     def export_solution_gen(self, output_path):
@@ -299,11 +320,11 @@ class MainWindow_EXCEC(object):
         return 1
 
     def export_solution(self):
-        output_path = self.ui.excel_path.text()
+        output_path = self.excel_path
         return self.export_solution_gen(output_path)
 
     def export_solution_to(self):
-        file_name = get_file_dialog(self.ui.excel_path.text())
+        file_name = get_file_dialog(self.excel_path)
         if not file_name:
             return False
         return self.export_solution_gen(file_name[0])
@@ -315,29 +336,80 @@ class MainWindow_EXCEC(object):
                 "No solution can be exported because there is no loaded solution.",
             )
             return 0
-        experiment = self.Experiment(self.instance, self.solution)
-        # we generate the report
-        try:
-            rep_path = experiment.generate_report("report")
-        except Exception as e:
-            self.show_message(
-                "Error",
-                f"A problem occurred generating report: {e}",
-            )
-            return 0
-        if not os.path.exists(rep_path):
-            self.show_message(
-                "Error",
-                f"A problem occurred generating report",
-            )
-            return 0
-        # move report to path
-        if not path:
-            path = "report.html"
-        if os.path.isdir(path):
-            path = os.path.join(path, "report.html")
-        os.rename(rep_path, path)
+
+        self.ui.solution_report.clear()
+        self.rep_worker = RepWorker(
+            self.my_app,
+            self.instance.to_json_str(),
+            self.solution.to_json_str(),
+        )
+        self.rep_worker.setObjectName("report thread")
+        self.rep_worker.finished.connect(self.load_report)
+        self.my_log_tailer = LogTailer("log.txt", self.ui.solution_report, interval=100)
+        self.rep_worker.started.connect(self.my_log_tailer.start)
+        self.rep_worker.finished.connect(self.my_log_tailer.stop)
+        # self.rep_worker.log_message.connect(self.update_report_log)
+        self.rep_worker.error.connect(self.update_report_log)
+
+        # new Worker:
+        self.rep_worker.start()
+
+        # experiment = self.Experiment(self.instance, self.solution)
+        # # we generate the report
+        # try:
+        #     rep_path = experiment.generate_report("report")
+        # except Exception as e:
+        #     self.show_message(
+        #         "Error",
+        #         f"A problem occurred generating report: {e}",
+        #     )
+        #     return 0
+        # if not os.path.exists(rep_path):
+        #     self.show_message(
+        #         "Error",
+        #         f"A problem occurred generating report",
+        #     )
+        #     return 0
+        # # move report to path
+        # if not path:
+        #     path = "report.html"
+        # if os.path.isdir(path):
+        #     path = os.path.join(path, "report.html")
+        # os.rename(rep_path, path)
+
         return 1
+
+    @QtCore.Slot()
+    def load_report(self, success, rep_path):
+        if not success:
+            return 0
+        text_browser = self.ui.solution_report
+        with open(rep_path, "r") as file:
+            content = file.read()
+            text_browser.setText(content)
+        text_browser.show()
+        text_browser.raise_()
+        return 1
+
+    @QtCore.Slot()
+    def update_report_log(self, message):
+        print("updating report log")
+        self.ui.solution_report.append(message)
+        self.ui.solution_report.moveCursor(QtGui.QTextCursor.MoveOperation.End)
+
+    def stop_report_generation(self):
+        print("stopping report generation")
+        self.ui.solution_report.append("stopping report generation")
+        self.rep_worker.quit()
+        self.rep_worker.wait()
+
+    def toggle_execution(self):
+        if self.opt_worker and self.opt_worker.isRunning():
+            self.ui.generateSolution.setText("Stop execution")
+            self.ui.generateSolution.clicked.connect(self.opt_worker.kill)
+            return 1
+        self.ui.generateSolution.setText("Generate plan")
+        self.ui.generateSolution.clicked.connect(self.generate_solution)
 
 
 #
@@ -364,53 +436,6 @@ def get_file_dialog(my_dir: str):
         options=options,
         filter="All Files (*);;Excel files (*.xlsx *.xlsm);;Json files (*.json)",
     )
-
-
-class LogTailer(QtCore.QObject):
-    def __init__(
-        self,
-        file_path,
-        text_browser: QtWidgets.QTextBrowser,
-        interval=1000,
-        parent=None,
-    ):
-        super().__init__(parent)
-        self.file_path = file_path
-        self.text_browser = text_browser
-        self.text_browser.clear()
-        self.interval = interval
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.update_log)
-        self.last_position = 0
-
-    @QtCore.Slot()
-    def start(self):
-        # print("start called")
-        self.timer.start(self.interval)
-
-    @QtCore.Slot()
-    def stop(self):
-        # print("stop called")
-        self.timer.stop()
-        # we delete the directory of the log
-        my_dir = os.path.dirname(self.file_path)
-        if os.path.exists(my_dir):
-            shutil.rmtree(my_dir)
-
-    def update_log(self):
-        # print("update_log called")
-        if not os.path.exists(self.file_path):
-            # print(f"File {self.file_path} does not exist")
-            return
-        with open(self.file_path, "r") as file:
-            file.seek(self.last_position)
-            content = file.read()
-            # lines = file.readlines()
-            self.last_position = file.tell()
-            if content:
-                # self.text_browser.append("".join(lines))
-                self.text_browser.insertPlainText(content)
-                self.text_browser.moveCursor(QtGui.QTextCursor.MoveOperation.End)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
+        MainWindow.resize(672, 544)
         self.actionOpen_from = QAction(MainWindow)
         self.actionOpen_from.setObjectName(u"actionOpen_from")
         self.actionExit = QAction(MainWindow)
@@ -43,44 +44,41 @@ class Ui_MainWindow(object):
         self.verticalLayout_17 = QVBoxLayout(self.widget)
         self.verticalLayout_17.setObjectName(u"verticalLayout_17")
         self.verticalLayout_17.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
-        self.horizontalLayout_13 = QHBoxLayout()
-        self.horizontalLayout_13.setObjectName(u"horizontalLayout_13")
-        self.verticalLayout_6 = QVBoxLayout()
-        self.verticalLayout_6.setSpacing(2)
-        self.verticalLayout_6.setObjectName(u"verticalLayout_6")
+        self.verticalLayout = QVBoxLayout()
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.horizontalLayout_3 = QHBoxLayout()
+        self.horizontalLayout_3.setSpacing(2)
+        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
         self.chooseFile = QPushButton(self.widget)
         self.chooseFile.setObjectName(u"chooseFile")
         font = QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         self.chooseFile.setFont(font)
 
-        self.verticalLayout_6.addWidget(self.chooseFile)
+        self.horizontalLayout_3.addWidget(self.chooseFile)
+
+        self.loadTest = QPushButton(self.widget)
+        self.loadTest.setObjectName(u"loadTest")
+
+        self.horizontalLayout_3.addWidget(self.loadTest)
 
         self.exportSolution = QPushButton(self.widget)
         self.exportSolution.setObjectName(u"exportSolution")
         self.exportSolution.setFont(font)
 
-        self.verticalLayout_6.addWidget(self.exportSolution)
+        self.horizontalLayout_3.addWidget(self.exportSolution)
 
         self.exportSolution_to = QPushButton(self.widget)
         self.exportSolution_to.setObjectName(u"exportSolution_to")
         self.exportSolution_to.setFont(font)
 
-        self.verticalLayout_6.addWidget(self.exportSolution_to)
+        self.horizontalLayout_3.addWidget(self.exportSolution_to)
 
 
-        self.horizontalLayout_13.addLayout(self.verticalLayout_6)
+        self.verticalLayout.addLayout(self.horizontalLayout_3)
 
-        self.excel_path = QLabel(self.widget)
-        self.excel_path.setObjectName(u"excel_path")
-        self.excel_path.setMinimumSize(QSize(300, 0))
-        self.excel_path.setBaseSize(QSize(0, 0))
-        self.excel_path.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse|Qt.TextInteractionFlag.TextEditable)
-
-        self.horizontalLayout_13.addWidget(self.excel_path)
-
-        self.verticalLayout_16 = QVBoxLayout()
-        self.verticalLayout_16.setObjectName(u"verticalLayout_16")
+        self.horizontalLayout_2 = QHBoxLayout()
+        self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
         self.instCheck = QLabel(self.widget)
         self.instCheck.setObjectName(u"instCheck")
         font1 = QFont()
@@ -89,20 +87,20 @@ class Ui_MainWindow(object):
         self.instCheck.setStyleSheet(u"QLabel { color : red; }")
         self.instCheck.setTextFormat(Qt.TextFormat.AutoText)
 
-        self.verticalLayout_16.addWidget(self.instCheck)
+        self.horizontalLayout_2.addWidget(self.instCheck)
 
         self.solCheck = QLabel(self.widget)
         self.solCheck.setObjectName(u"solCheck")
         self.solCheck.setFont(font1)
         self.solCheck.setStyleSheet(u"QLabel { color : red; }")
 
-        self.verticalLayout_16.addWidget(self.solCheck)
+        self.horizontalLayout_2.addWidget(self.solCheck)
 
 
-        self.horizontalLayout_13.addLayout(self.verticalLayout_16)
+        self.verticalLayout.addLayout(self.horizontalLayout_2)
 
 
-        self.verticalLayout_17.addLayout(self.horizontalLayout_13)
+        self.verticalLayout_17.addLayout(self.verticalLayout)
 
         self.tabWidget = QTabWidget(self.widget)
         self.tabWidget.setObjectName(u"tabWidget")
@@ -168,12 +166,6 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_12.addWidget(self.generateSolution)
 
-        self.stopExecution = QPushButton(self.Config)
-        self.stopExecution.setObjectName(u"stopExecution")
-        self.stopExecution.setEnabled(False)
-
-        self.horizontalLayout_12.addWidget(self.stopExecution)
-
 
         self.verticalLayout_13.addLayout(self.horizontalLayout_12)
 
@@ -193,31 +185,29 @@ class Ui_MainWindow(object):
         self.tabWidget.addTab(self.Config, "")
         self.Report_4 = QWidget()
         self.Report_4.setObjectName(u"Report_4")
-        self.verticalLayoutWidget_5 = QWidget(self.Report_4)
-        self.verticalLayoutWidget_5.setObjectName(u"verticalLayoutWidget_5")
-        self.verticalLayoutWidget_5.setGeometry(QRect(10, 10, 621, 281))
-        self.verticalLayout_15 = QVBoxLayout(self.verticalLayoutWidget_5)
+        self.horizontalLayout_4 = QHBoxLayout(self.Report_4)
+        self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
+        self.verticalLayout_15 = QVBoxLayout()
         self.verticalLayout_15.setObjectName(u"verticalLayout_15")
-        self.verticalLayout_15.setContentsMargins(0, 0, 0, 0)
         self.formLayout = QFormLayout()
         self.formLayout.setObjectName(u"formLayout")
-        self.objectiveLabel = QLabel(self.verticalLayoutWidget_5)
+        self.objectiveLabel = QLabel(self.Report_4)
         self.objectiveLabel.setObjectName(u"objectiveLabel")
 
         self.formLayout.setWidget(0, QFormLayout.LabelRole, self.objectiveLabel)
 
-        self.objectiveLineEdit = QLineEdit(self.verticalLayoutWidget_5)
+        self.objectiveLineEdit = QLineEdit(self.Report_4)
         self.objectiveLineEdit.setObjectName(u"objectiveLineEdit")
         self.objectiveLineEdit.setReadOnly(True)
 
         self.formLayout.setWidget(0, QFormLayout.FieldRole, self.objectiveLineEdit)
 
-        self.errorsLabel = QLabel(self.verticalLayoutWidget_5)
+        self.errorsLabel = QLabel(self.Report_4)
         self.errorsLabel.setObjectName(u"errorsLabel")
 
         self.formLayout.setWidget(1, QFormLayout.LabelRole, self.errorsLabel)
 
-        self.errorsLineEdit = QLineEdit(self.verticalLayoutWidget_5)
+        self.errorsLineEdit = QLineEdit(self.Report_4)
         self.errorsLineEdit.setObjectName(u"errorsLineEdit")
         self.errorsLineEdit.setReadOnly(True)
 
@@ -228,12 +218,12 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_14 = QHBoxLayout()
         self.horizontalLayout_14.setObjectName(u"horizontalLayout_14")
-        self.checkSolution = QPushButton(self.verticalLayoutWidget_5)
+        self.checkSolution = QPushButton(self.Report_4)
         self.checkSolution.setObjectName(u"checkSolution")
 
         self.horizontalLayout_14.addWidget(self.checkSolution)
 
-        self.generateReport = QPushButton(self.verticalLayoutWidget_5)
+        self.generateReport = QPushButton(self.Report_4)
         self.generateReport.setObjectName(u"generateReport")
 
         self.horizontalLayout_14.addWidget(self.generateReport)
@@ -241,10 +231,15 @@ class Ui_MainWindow(object):
 
         self.verticalLayout_15.addLayout(self.horizontalLayout_14)
 
-        self.solution_log_2 = QTextBrowser(self.verticalLayoutWidget_5)
-        self.solution_log_2.setObjectName(u"solution_log_2")
+        self.solution_report = QTextBrowser(self.Report_4)
+        self.solution_report.setObjectName(u"solution_report")
+        sizePolicy.setHeightForWidth(self.solution_report.sizePolicy().hasHeightForWidth())
+        self.solution_report.setSizePolicy(sizePolicy)
 
-        self.verticalLayout_15.addWidget(self.solution_log_2)
+        self.verticalLayout_15.addWidget(self.solution_report)
+
+
+        self.horizontalLayout_4.addLayout(self.verticalLayout_15)
 
         self.tabWidget.addTab(self.Report_4, "")
 
@@ -256,7 +251,7 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 698, 23))
+        self.menubar.setGeometry(QRect(0, 0, 672, 23))
         self.menuFile = QMenu(self.menubar)
         self.menuFile.setObjectName(u"menuFile")
         MainWindow.setMenuBar(self.menubar)
@@ -291,9 +286,9 @@ class Ui_MainWindow(object):
         self.actionSave.setText(QCoreApplication.translate("MainWindow", u"Export", None))
         self.actionSave_As.setText(QCoreApplication.translate("MainWindow", u"Export As...", None))
         self.chooseFile.setText(QCoreApplication.translate("MainWindow", u"Open", None))
+        self.loadTest.setText(QCoreApplication.translate("MainWindow", u"Test", None))
         self.exportSolution.setText(QCoreApplication.translate("MainWindow", u"Save", None))
         self.exportSolution_to.setText(QCoreApplication.translate("MainWindow", u"Save As", None))
-        self.excel_path.setText("")
         self.instCheck.setText(QCoreApplication.translate("MainWindow", u"No instance loaded", None))
         self.solCheck.setText(QCoreApplication.translate("MainWindow", u"No solution loaded", None))
 #if QT_CONFIG(tooltip)
@@ -307,7 +302,6 @@ class Ui_MainWindow(object):
         self.log_level.setCurrentText(QCoreApplication.translate("MainWindow", u"INFO", None))
         self.reuse_solLabel.setText(QCoreApplication.translate("MainWindow", u"Reuse previous solution", None))
         self.generateSolution.setText(QCoreApplication.translate("MainWindow", u"Generate plan", None))
-        self.stopExecution.setText(QCoreApplication.translate("MainWindow", u"Stop execution", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.Config), QCoreApplication.translate("MainWindow", u"Solve", None))
         self.objectiveLabel.setText(QCoreApplication.translate("MainWindow", u"Objective", None))
         self.errorsLabel.setText(QCoreApplication.translate("MainWindow", u"Errors", None))

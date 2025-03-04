@@ -2,6 +2,14 @@
 <ui version="4.0">
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>672</width>
+    <height>544</height>
+   </rect>
+  </property>
   <property name="windowTitle">
    <string>MyOptimApp</string>
   </property>
@@ -14,9 +22,9 @@
         <enum>QLayout::SizeConstraint::SetNoConstraint</enum>
        </property>
        <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_13">
+        <layout class="QVBoxLayout" name="verticalLayout">
          <item>
-          <layout class="QVBoxLayout" name="verticalLayout_6">
+          <layout class="QHBoxLayout" name="horizontalLayout_3">
            <property name="spacing">
             <number>2</number>
            </property>
@@ -24,7 +32,7 @@
             <widget class="QPushButton" name="chooseFile">
              <property name="font">
               <font>
-               <pointsize>10</pointsize>
+               <pointsize>11</pointsize>
               </font>
              </property>
              <property name="text">
@@ -36,10 +44,17 @@
             </widget>
            </item>
            <item>
+            <widget class="QPushButton" name="loadTest">
+             <property name="text">
+              <string>Test</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QPushButton" name="exportSolution">
              <property name="font">
               <font>
-               <pointsize>10</pointsize>
+               <pointsize>11</pointsize>
               </font>
              </property>
              <property name="text">
@@ -54,7 +69,7 @@
             <widget class="QPushButton" name="exportSolution_to">
              <property name="font">
               <font>
-               <pointsize>10</pointsize>
+               <pointsize>11</pointsize>
               </font>
              </property>
              <property name="text">
@@ -68,29 +83,7 @@
           </layout>
          </item>
          <item>
-          <widget class="QLabel" name="excel_path">
-           <property name="minimumSize">
-            <size>
-             <width>300</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="baseSize">
-            <size>
-             <width>0</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="text">
-            <string/>
-           </property>
-           <property name="textInteractionFlags">
-            <set>Qt::TextInteractionFlag::LinksAccessibleByMouse|Qt::TextInteractionFlag::TextEditable</set>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <layout class="QVBoxLayout" name="verticalLayout_16">
+          <layout class="QHBoxLayout" name="horizontalLayout_2">
            <item>
             <widget class="QLabel" name="instCheck">
              <property name="font">
@@ -223,16 +216,6 @@
                  </property>
                 </widget>
                </item>
-               <item>
-                <widget class="QPushButton" name="stopExecution">
-                 <property name="enabled">
-                  <bool>false</bool>
-                 </property>
-                 <property name="text">
-                  <string>Stop execution</string>
-                 </property>
-                </widget>
-               </item>
               </layout>
              </item>
              <item>
@@ -253,71 +236,72 @@
           <attribute name="title">
            <string>Statistics</string>
           </attribute>
-          <widget class="QWidget" name="verticalLayoutWidget_5">
-           <property name="geometry">
-            <rect>
-             <x>10</x>
-             <y>10</y>
-             <width>621</width>
-             <height>281</height>
-            </rect>
-           </property>
-           <layout class="QVBoxLayout" name="verticalLayout_15" stretch="0,0,0">
-            <item>
-             <layout class="QFormLayout" name="formLayout">
-              <item row="0" column="0">
-               <widget class="QLabel" name="objectiveLabel">
-                <property name="text">
-                 <string>Objective</string>
-                </property>
-               </widget>
-              </item>
-              <item row="0" column="1">
-               <widget class="QLineEdit" name="objectiveLineEdit">
-                <property name="readOnly">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-              <item row="1" column="0">
-               <widget class="QLabel" name="errorsLabel">
-                <property name="text">
-                 <string>Errors</string>
-                </property>
-               </widget>
-              </item>
-              <item row="1" column="1">
-               <widget class="QLineEdit" name="errorsLineEdit">
-                <property name="readOnly">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
-            <item>
-             <layout class="QHBoxLayout" name="horizontalLayout_14">
-              <item>
-               <widget class="QPushButton" name="checkSolution">
-                <property name="text">
-                 <string>Check solution</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="generateReport">
-                <property name="text">
-                 <string>Generate report</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
-            <item>
-             <widget class="QTextBrowser" name="solution_log_2"/>
-            </item>
-           </layout>
-          </widget>
+          <layout class="QHBoxLayout" name="horizontalLayout_4">
+           <item>
+            <layout class="QVBoxLayout" name="verticalLayout_15" stretch="0,0,0">
+             <item>
+              <layout class="QFormLayout" name="formLayout">
+               <item row="0" column="0">
+                <widget class="QLabel" name="objectiveLabel">
+                 <property name="text">
+                  <string>Objective</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QLineEdit" name="objectiveLineEdit">
+                 <property name="readOnly">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="errorsLabel">
+                 <property name="text">
+                  <string>Errors</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QLineEdit" name="errorsLineEdit">
+                 <property name="readOnly">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_14">
+               <item>
+                <widget class="QPushButton" name="checkSolution">
+                 <property name="text">
+                  <string>Check solution</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="generateReport">
+                 <property name="text">
+                  <string>Generate report</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QTextBrowser" name="solution_report">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
          </widget>
         </widget>
        </item>
@@ -331,7 +315,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>698</width>
+     <width>672</width>
      <height>23</height>
     </rect>
    </property>
