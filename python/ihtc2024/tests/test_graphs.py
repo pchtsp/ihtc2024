@@ -72,6 +72,11 @@ class TestGraph(BaseTestInstance):
         my_experim = solvers["graph"](my_experim.instance, group_nurses=False)
         my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
 
+    def test_competition_01(self):
+        my_experim = self.get_test_experiment("i01.json")
+        my_experim = solvers["graph"](my_experim.instance)
+        my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
+
     def test_profile_test29(self):
         my_experim = self.get_test_experiment("i29.json")
         my_experim = solvers["graph"](my_experim.instance)

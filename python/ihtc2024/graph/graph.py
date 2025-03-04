@@ -17,7 +17,9 @@ import random as rn
 
 
 class GraphTool(object):
-    refs: Dict[Node, int]
+    # refs: Dict[Node, int]
+    sink: Node
+    source: Node
     refs_inv: list[Node]
     g: gr.Graph
     instance: Instance
@@ -35,9 +37,9 @@ class GraphTool(object):
     edge_changes_group: gr.EdgePropertyMap
     edges: np.ndarray
     weights: gr.EdgePropertyMap
-    nodes__n_s: dict[Tuple[str, int], list[int]]
-    nodes__r_s: dict[Tuple[str, int], list[int]]
-    nodes__pos: dict[int, list[int]]
+    nodes__n_s: defaultdict[Tuple[str, int], set[int]]
+    nodes__r_s: defaultdict[Tuple[str, int], set[int]]
+    nodes__pos: defaultdict[int, set[int]]
     _equiv_nurse: Dict[str, int]
     _equiv_room: Dict[str, int]
     _equiv_theater: Dict[str, int]
@@ -60,17 +62,23 @@ class GraphTool(object):
         nodes = list(nodes_ady.keys())
         nodes.append(self.sink)
         vertices = self.g.add_vertex(len(nodes))
-        # nodes = list(set(np.concatenate((edges_arr[:, 0], edges_arr[:, 1]))))
-        # vertices = self.g.add_vertex(len(nodes))
-        self.refs = {node: int(v) for node, v in zip(nodes, vertices)}
+        # this we generate once, but then we store the reference inside the node
+        refs = {node: int(v) for node, v in zip(nodes, vertices)}
         self.inf_weight = 1e8
-        # TODO: we should have the same references to node objects to make this work
-        # for node, v in zip(nodes, vertices):
-        #     node.id = int(v)
+        for node, v in zip(nodes, self.g.vertices()):
+            node.id = int(v)
         self.refs_inv = nodes
+        self.source = self.refs_inv[refs[get_source_node(instance)]]
 
-        vectorized_map = np.vectorize(self.refs.get)
-        # vectorized_map = np.vectorize(lambda v: self.refs[v])
+        # unfortunately, because we parallelize the creation of the graph
+        #  not all objects are shared, we need to use the dictionary sometimes
+        def get_id(node):
+            try:
+                return node.id
+            except AttributeError:
+                return refs[node]
+
+        vectorized_map = np.vectorize(get_id)
         edges_list = vectorized_map(edges_arr)
         self.g.add_edge_list(edges_list)
 
@@ -79,7 +87,7 @@ class GraphTool(object):
         self.nurse_vp = self.g.new_vp("int")
         self.theater_vp = self.g.new_vp("int")
         self.room_vp = self.g.new_vp("int")
-        self.weights = self.g.new_ep("int")
+        self.weights = self.g.new_ep("float")
 
         self._equiv_nurse = {k: v for v, k in enumerate(self.instance.get_nurses())}
         self._equiv_nurse[None] = -1
@@ -104,17 +112,17 @@ class GraphTool(object):
         # get a dictionary with a list of nodes per patient
         self.pnodes = dict()
         # get a dictionary with a list of nodes for each nurse and shift combination:
-        self.nodes__n_s = dict()
+        self.nodes__n_s = defaultdict(set)
         # all nurse nodes per room-shift combination
-        self.nodes__r_s = dict()
+        self.nodes__r_s = defaultdict(set)
         # all nurse nodes per shift-position
-        self.nodes__pos = dict()
+        self.nodes__pos = defaultdict(set)
         # all day nodes per shift start
-        self.nodes__st = dict()
+        self.nodes__st = defaultdict(list)
         # all theater nodes per shift-theater
-        self.nodes__s_o = dict()
+        self.nodes__s_o = defaultdict(list)
         # all room nodes per shift-room
-        self.nodes__s_r = dict()
+        self.nodes__s_r = defaultdict(list)
 
         nurse_sl = self.instance.get_nurses().get_property("skill_level")
         nurse_ml = self.instance.get_nurse_shift().get_property("max_load")
@@ -191,7 +199,8 @@ class GraphTool(object):
 
             for p, patient_info in patients.items():
                 print(f"Patient views: {p}")
-                nodes = [self.refs[n] for n in nodes_ady_p[p]]
+                # nodes = [self.refs[n] for n in nodes_ady_p[p]]
+                nodes = [get_id(n) for n in nodes_ady_p[p]]
                 l_o_s: int = patient_info["length_of_stay"]
                 if patient_forbidden:
                     self.patient_forbidden[p] = dict(
@@ -203,51 +212,40 @@ class GraphTool(object):
                     )
             log.info("Finish creating patient views")
 
-        print("Start creating node lists")
+        log.info("Start creating node lists")
 
         for v in self.g.vertices():
             vertex_i = self.g.vertex_index[v]
             node = self.refs_inv[vertex_i]
             if node.type == TYPE.NURSE:
                 pos_shift = node.pos_shift
-                if pos_shift not in self.nodes__pos:
-                    self.nodes__pos[pos_shift] = []
-                self.nodes__pos[pos_shift].append(vertex_i)
+                self.nodes__pos[pos_shift].add(vertex_i)
                 nurse_shift = (node.nurse, node.shift)
                 room_shift = (node.room, node.shift)
-                if nurse_shift not in self.nodes__n_s:
-                    self.nodes__n_s[nurse_shift] = []
-                self.nodes__n_s[nurse_shift].append(vertex_i)
-                if room_shift not in self.nodes__r_s:
-                    self.nodes__r_s[room_shift] = []
-                self.nodes__r_s[room_shift].append(vertex_i)
+                self.nodes__n_s[nurse_shift].add(vertex_i)
+                self.nodes__r_s[room_shift].add(vertex_i)
 
             if node.type == TYPE.DAY:
-                if node.shift not in self.nodes__st:
-                    self.nodes__st[node.shift] = []
                 self.nodes__st[node.shift].append(vertex_i)
             if node.type == TYPE.THEATER:
                 shift_theater = (node.shift, node.theater)
-                if shift_theater not in self.nodes__s_o:
-                    self.nodes__s_o[shift_theater] = []
                 self.nodes__s_o[shift_theater].append(vertex_i)
             if node.type == TYPE.ROOM:
                 shift_room = (node.shift, node.room)
-                if shift_room not in self.nodes__s_r:
-                    self.nodes__s_r[shift_room] = []
                 self.nodes__s_r[shift_room].append(vertex_i)
+        log.info("Start creating patient-specific nurse node lists")
         self.pnodes = dict((p, dict()) for p in self.patient_forbidden)
         for p, elem in self.patient_forbidden.items():
             p_nodes_set = set(elem["nodes_in"])
-            self.pnodes[p]["nodes__pos"] = dict(
-                (k, list(set(v) & p_nodes_set)) for k, v in self.nodes__pos.items()
-            )
-            self.pnodes[p]["nodes__r_s"] = dict(
-                (k, list(set(v) & p_nodes_set)) for k, v in self.nodes__r_s.items()
-            )
-            self.pnodes[p]["nodes__n_s"] = dict(
-                (k, list(set(v) & p_nodes_set)) for k, v in self.nodes__n_s.items()
-            )
+            self.pnodes[p]["nodes__pos"] = {
+                k: list(v & p_nodes_set) for k, v in self.nodes__pos.items()
+            }
+            self.pnodes[p]["nodes__r_s"] = {
+                k: list(v & p_nodes_set) for k, v in self.nodes__r_s.items()
+            }
+            self.pnodes[p]["nodes__n_s"] = {
+                k: list(v & p_nodes_set) for k, v in self.nodes__n_s.items()
+            }
 
         # some cache:
         self.__needs__p__s = self.instance.get_patients_occupants_needs().to_dictdict()
@@ -258,12 +256,9 @@ class GraphTool(object):
     def shortest_path(self, node1=None, node2=None, **kwargs):
         target, source = None, None
         if node1 is not None:
-            source = find_vertex(self.g, self.refs, node1)
-            if source is None:
-                log.error("There was a problem finding node {}".format(node1))
-                return None
+            source = node1.id
         if node2 is not None:
-            target = find_vertex(self.g, self.refs, node2)
+            target = node2.id
         return gr.shortest_distance(
             self.g, source=source, target=target, dag=True, **kwargs
         )
@@ -333,7 +328,9 @@ class GraphTool(object):
 
         for d in ban_days:
             my_shift = d * 3
-            result[self.nodes__st[my_shift]] = 1
+            # not all shifts are available as start nodes
+            if my_shift in self.nodes__st:
+                result[self.nodes__st[my_shift]] = 1
 
         for r, d in ban_room_days:
             # this ban is for the whole stay.
@@ -342,7 +339,8 @@ class GraphTool(object):
             start_shift = max(0, d - patient_info["length_of_stay"] + 1) * 3
             end_shift = d * 3
             for my_shift in range(start_shift, end_shift + 1, 3):
-                result[self.nodes__s_r[my_shift, r]] = 1
+                if (my_shift, r) in self.nodes__s_r:
+                    result[self.nodes__s_r[my_shift, r]] = 1
 
         return result
 
@@ -723,28 +721,35 @@ class GraphTool(object):
         if forbidden:
             my_vertices = forbidden["nodes_in"]
         percent = 0.2
-        chosen = rn.sample(my_vertices, round(len(my_vertices) * percent))
-        noise = np.zeros_like(n_skill_level)
-        noise[chosen] = 1
+
+        # chosen = rn.sample(my_vertices, round(len(my_vertices) * percent))
+        noise = np.zeros_like(n_skill_level, dtype="float")
+        noise[my_vertices] = np.random.uniform(size=len(my_vertices))
+
+        node_weights = (
+            n_workload * weights["nurse_eccessive_workload"]
+            + n_admission_delay * weights["patient_delay"]
+            + n_skill_level * weights["room_nurse_skill"]
+            + n_age_diff * weights["room_mixed_age"]
+            + n_open_theater * weights["open_operating_theater"]
+            + n_surgeon_transfer * weights["surgeon_transfer"]
+            # # a bit of noise in the nodes:
+            + noise
+        )
 
         return (
-            n_workload[targets] * weights["nurse_eccessive_workload"]
-            + n_continuity_care * weights["continuity_of_care"]
-            + n_admission_delay[targets] * weights["patient_delay"]
+            # edge weights:
+            n_continuity_care * weights["continuity_of_care"]
             + edge_unassigned * weights["unscheduled_optional"]
-            + n_skill_level[targets] * weights["room_nurse_skill"]
-            + n_age_diff[targets] * weights["room_mixed_age"]
-            + n_open_theater[targets] * weights["open_operating_theater"]
-            + n_surgeon_transfer[targets] * weights["surgeon_transfer"]
-            # a bit of noise in the arcs:
-            + noise[targets]
+            # we project nodes into edges
+            + node_weights[targets]
         )
 
     def get_source_node(self):
-        return find_vertex(self.g, self.refs, get_source_node(self.instance))
+        return self.source.id
 
     def get_sink_node(self):
-        return find_vertex(self.g, self.refs, get_sink_node(self.instance))
+        return self.sink.id
 
     def draw(
         self,

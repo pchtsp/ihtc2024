@@ -262,7 +262,9 @@ class Node(object):
                 adjacent = adjacent + [sink_node]
         return adjacent
 
-    def walk_over_nodes(self, cache_neighbors=None, max_neighbors=None, max_nurses=10):
+    def walk_over_nodes(
+        self, cache_neighbors: dict | None = None, max_neighbors=None, max_nurses=10
+    ):
         """
 
         :param node: node from where we start the DFS
@@ -287,7 +289,7 @@ class Node(object):
         remaining_nodes = [self]
         # we store the neighbors of visited nodes, not to recalculate them
         if not cache_neighbors:
-            cache_neighbors = SuperDict()
+            cache_neighbors = dict()
         # given that cache_neighbors could already exist,
         #  we generate our own list of actual visited nodes
         i = 0
@@ -363,11 +365,13 @@ def get_nodes_ady(instance, **kwargs):
     return source.walk_over_nodes(**kwargs)
 
 
-def get_nodes_ady_par(instance, num_workers=4, **kwargs):
+def get_nodes_ady_par(
+    instance: Instance, num_workers=4, **kwargs
+) -> dict[Node, list[Node]]:
     # TODO: watch out with importing timefold and python-java code
     source = get_source_node(instance)
     day_nodes = source.get_adjacency_days()
-    nodes_ady = SuperDict()
+    nodes_ady = dict()
     with multi.Pool(processes=num_workers) as pool:
         results = pool.map(Node.walk_over_nodes, day_nodes)
     for a in results:
@@ -377,24 +381,23 @@ def get_nodes_ady_par(instance, num_workers=4, **kwargs):
 
 
 def nodes_per_patient(
-    nodes_ady: SuperDict[Node, list[Node]], instance: Instance, maxSample=10
-) -> SuperDict:
+    nodes_ady: dict[Node, list[Node]], instance: Instance, maxSample=10
+) -> dict[str, set[Node]]:
     nodes = nodes_ady.keys()
     day_range = instance.get_patient_occupants_available_starts()
     patients = instance.get_patients_occupants()
     length_p = patients.get_property("length_of_stay")
-    _by_start = SuperDict({r * 3: set() for d in day_range.values() for r in d})
+    _by_start = {r * 3: set() for d in day_range.values() for r in d}
     # this only applies to source:
     _by_start[-1] = set()
-    _by_room = SuperDict({r: set() for r in instance.get_rooms()})
+    _by_room = {r: set() for r in instance.get_rooms()}
     _by_room[None] = set()
-    _by_type = SuperDict({r: set() for r in ALL_TYPES})
-    _by_shift = SuperDict(
-        {r: set() for r in range(instance.get_last_shift_horizon() + 1)}
-    )
+    _by_type = {r: set() for r in ALL_TYPES}
+    _by_shift = {r: set() for r in range(instance.get_last_shift_horizon() + 1)}
+
     # positions at or before a certain length of stay
     all_positions = range(max(length_p.values()) * 3)
-    _by_pos = SuperDict({r: set() for r in all_positions})
+    _by_pos = {r: set() for r in all_positions}
     # we want to count the shifts before the nurse
     _by_pos[-1] = set()
     for v in nodes:
@@ -410,7 +413,7 @@ def nodes_per_patient(
         if v.shift > 0:
             _by_shift[v.shift].add(v)
 
-    _by_length = SuperDict({r: set() for r in length_p.values()})
+    _by_length = {r: set() for r in length_p.values()}
     days = sorted(_by_length.keys())
     day_pos = 0
     len_days = len(days)
@@ -436,9 +439,13 @@ def nodes_per_patient(
         "length_p": length_p,
         "banrooms_p": banrooms_p,
     }
-    my_nodes_ady = SuperDict()
-    for p, patient_info in patients.items():
-        my_nodes_ady[p] = get_nodes_ady_per_patient(instance, patient_info, prep_data)
+    my_nodes_ady = {
+        p: get_nodes_ady_per_patient(instance, patient_info, prep_data)
+        for p, patient_info in patients.items()
+    }
+    # my_nodes_ady = dict()
+    # for p, patient_info in patients.items():
+    #     my_nodes_ady[p] = get_nodes_ady_per_patient(instance, patient_info, prep_data)
 
     return my_nodes_ady
 

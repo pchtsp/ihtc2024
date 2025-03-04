@@ -108,6 +108,8 @@ class CpSAT2Step(CpSAT):
         my_options_2.pop("gapRel", 0)
         if VERBOSE:
             self.print_time(f"Phase2")
+        if options.get("dump_vars"):
+            model.ExportToFile("model.txt")
         status = self.call_solver(model, solver, my_options_2)
 
         if options.get("msg", False):

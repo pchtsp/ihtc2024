@@ -262,12 +262,6 @@ class Experiment(ExperimentCore):
             min_max[0] = min(min_max[0], p_agegroup[v["patient"]])
             min_max[1] = max(min_max[1], p_agegroup[v["patient"]])
         age_group_err = age_group_err.vfilter(lambda v: v[1] != -1).vapply(tuple)
-        # room_usage
-        # age_group_err = (
-        #     room_usage.vapply_col("agegroup", lambda v: p_agegroup[v["patient"]])
-        #     .to_dict("agegroup", indices=["room", "day"])
-        #     .vapply(lambda v: (min(v), max(v)))
-        # )
         # minimum skill level
         skill_level__n = self.instance.get_nurses().get_property("skill_level")
         patient_solution_details = self.get_patient_shift_details()
@@ -284,30 +278,15 @@ class Experiment(ExperimentCore):
             continuity_err[key].add(elem["nurse"])
 
         continuity_err = SuperDict(continuity_err)
-
-        # continuity_err = (
-        #     patient_solution_details.values_tl()
-        #     .take(["id", "nurse"])
-        #     .unique2()
-        #     .to_dict(1)
-        #     .vapply(set)
-        # )
-
         # S4
-        nurse_shift = self.instance.get_nurse_shift()
-        # self.get_nurse_assignment_shift()
-        overwork_nurse = defaultdict(int)
+        overwork_nurse = (
+            self.instance.get_nurse_shift()
+            .get_property("max_load")
+            .vapply(lambda v: -v)
+        )
         for elem in patient_solution_details.values():
             my_tup = elem["nurse"], elem["shift"]
             overwork_nurse[my_tup] += elem["workload_produced"]
-        # overwork_nurse = (
-        #     patient_solution_details.values_tl()
-        #     .to_dict("workload_produced", indices=["nurse", "shift"])
-        #     .vapply(sum)
-        # )
-        overwork_nurse = nurse_shift.kvapply(
-            lambda k, v: overwork_nurse.get(k, 0) - v["max_load"]
-        )
 
         # open OTs [S5]:
         patient_assignment = self.get_all_assignments()
@@ -329,14 +308,6 @@ class Experiment(ExperimentCore):
                 v["operating_theater"]
             )
         ots__s_d = SuperDict(ots__s_d)
-        # ots__s_d = (
-        #     patient_assignment.values_tl()
-        #     .vfilter(lambda v: v["operating_theater"] is not None)
-        #     .copy_deep()
-        #     .vapply_col("surgeon", lambda v: patients[v["id"]]["surgeon_id"])
-        #     .to_dict("operating_theater", indices=["surgeon", "admission_day"])
-        #     .vapply(set)
-        # )
 
         # admission delay [S7]
         admission_delay = (
@@ -462,6 +433,7 @@ class Experiment(ExperimentCore):
         return result
 
     def get_patient_shift_details(self):
+        # TODO: fix report that assumes it has nurse_skill
         patient_assignment = self.get_all_assignments()
         needs__p_s = self.instance.get_patients_occupants_needs()
         patient_occupants_shifts = self.get_patient_occupant_stay_shifts()

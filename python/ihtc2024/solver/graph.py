@@ -24,13 +24,17 @@ class Graph(Experiment):
     rng: np.random.Generator
 
     def __init__(
-        self, instance: Instance, solution: Solution = None, group_nurses: bool = True
+        self,
+        instance: Instance,
+        solution: Solution = None,
+        group_nurses: bool = True,
+        threads: int = 4,
     ):
         self.rng = np.random.default_rng()
         Experiment.__init__(self, instance, solution)
         self.init = time.time()
         log.info(f"start creating nodes")
-        nodes_ady = get_nodes_ady_par(self.instance, num_workers=4)
+        nodes_ady = get_nodes_ady_par(self.instance, num_workers=threads)
         log.info(f"end creating nodes: {len(nodes_ady)} nodes")
         log.info(f"Creating Graph")
         my_nodes__p = nodes_per_patient(nodes_ady, self.instance)
@@ -85,6 +89,7 @@ class Graph(Experiment):
         options: dict,
         patients_occupants_s: Iterable[dict],
         num_passes: int | None = None,
+        max_skipped_mandatory: int | None = None,
     ) -> Tuple[SolStats, SolStats]:
         log.info("Solving starts")
         VERBOSE = options.get("msg", False)
@@ -135,7 +140,15 @@ class Graph(Experiment):
                         curr_stats.get_sum_errors() > 0
                         and curr_stats.get_sum_errors() == skipped_mandatory
                     ):
+                        log.info(f"Skipped some mandatory: we stop")
                         break
+                if (
+                    max_skipped_mandatory is not None
+                    and skipped_mandatory >= max_skipped_mandatory
+                ):
+                    log.info(f"Max skipped mandatory reached")
+                    return curr_stats, best_stats
+
                 if VERBOSE:
                     log.debug(
                         f"current={curr_stats.get_objective()}; errors={curr_stats.get_sum_errors()}; best={best_stats.get_objective()}"
@@ -193,7 +206,7 @@ class Graph(Experiment):
             )
         )
 
-        curr_stats, best_stats = self.solve_patients(options, patients_occupants_s)
+        curr_stats, best_stats = self.solve_patients(options, patients_occupants_s, 1)
 
         return self.check_stats_update_solution(curr_stats, best_stats, options)
 

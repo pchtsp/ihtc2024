@@ -78,3 +78,13 @@ class TestGraphTW(BaseTestInstance):
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
         objective = my_experim.get_objective()
         print(objective)
+
+    def test_competition_01(self):
+        my_experim = self.get_test_experiment("i01.json")
+        my_experim = solvers["graph_tw"](my_experim.instance)
+        my_experim.solve(dict(threads=8, timeLimit=60, msg=True, dump_vars=True))
+
+    def test_competition_28(self):
+        my_experim = self.get_test_experiment("i28.json")
+        my_experim = solvers["graph_tw"](my_experim.instance, threads=8)
+        my_experim.solve(dict(threads=8, timeLimit=600, msg=True))

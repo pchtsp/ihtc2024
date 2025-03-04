@@ -3,7 +3,7 @@ import statistics as stats
 import random as rn
 import numpy as np
 from .graph import Graph, SolStats
-
+from .graph_GRASP import GraphGRASP
 from .cp_sat import CpSAT
 
 from .cp_sat_2step import CpSAT2Step as CpSAT2
@@ -19,11 +19,11 @@ from cornflow_client.constants import (
 import logging as log
 
 
-class GraphTW(CpSAT2, Graph):
+class GraphTW(CpSAT2, GraphGRASP):
 
-    def __init__(self, instance: Instance, solution: Solution = None):
+    def __init__(self, instance: Instance, solution: Solution = None, **kwargs):
         CpSAT.__init__(self, instance, solution)
-        Graph.__init__(self, instance, solution)
+        GraphGRASP.__init__(self, instance, solution, **kwargs)
 
     def solve(self, options: dict = None) -> dict:
         options["seed"] = options.get("seed", 42)
@@ -43,17 +43,23 @@ class GraphTW(CpSAT2, Graph):
             # unless we have a problem finding a feasible solution
             if run == 0:
                 # we take at most X seconds to find a nice solution
-                my_time = time.time()
-                while time.time() - my_time < max_restart_sec:
-                    Graph.solve(self, options)
-                    curr_sol_stats = self.get_solStats()
-                    # if a good solution we keep
-                    if curr_sol_stats < best_sol_stats:
-                        best_sol_stats = curr_sol_stats.copy()
-                    # we restart from scratch
-                    # TODO: or we just take out half the patients?
-                    self.reset_solution()
-                    # print(f"Best: {best_sol_stats.get_objective()}")
+                # my_time = time.time()
+                if True:
+                    my_options = dict(options)
+                    my_options["timeLimit"] = min(
+                        max_restart_sec, TIME_LIMIT - self.elapsed_time()
+                    )
+                    GraphGRASP.solve(self, my_options)
+                else:
+                    while time.time() - my_time < max_restart_sec:
+                        Graph.solve(self, options)
+                        curr_sol_stats = self.get_solStats()
+                        # if a good solution we keep
+                        if curr_sol_stats < best_sol_stats:
+                            best_sol_stats = curr_sol_stats.copy()
+                        # we restart from scratch
+                        # TODO: or we just take out half the patients?
+                        self.reset_solution()
                 # we keep the best of all
                 curr_sol_stats = best_sol_stats.copy()
                 self.solution = curr_sol_stats.solution
@@ -72,6 +78,7 @@ class GraphTW(CpSAT2, Graph):
             size = rn.randint(10, 15)
             maxSampleN = 15
             maxSample = [rn.randint(7, 15)]
+            gapRel = 0.05
             # else:
             #     solver = CpSAT
             #     size = rn.randint(5, 10)
@@ -80,8 +87,9 @@ class GraphTW(CpSAT2, Graph):
             if curr_sol_stats.errors["h5"]:
                 # we favor feasibility here, so we use CpSAT2 and a large time window
                 solver = CpSAT2
+                gapRel = 0.5
                 if run == 0:
-                    size = rn.randint(10, 20)
+                    size = rn.randint(15, 25)
                     pos_starts = (
                         self.instance.get_patient_occupants_available_starts()
                         .filter(curr_sol_stats.errors["h5"])
@@ -99,7 +107,7 @@ class GraphTW(CpSAT2, Graph):
             else:
                 tw = dict(size=size)
             my_options = dict(options)
-            stop_condition = dict(ma_size=10, min_imp_per_sec=5, length_bad_imp=5)
+            stop_condition = dict(ma_size=10, min_imp_per_sec=5, length_bad_imp=10)
             my_options.update(
                 dict(
                     maxSample=maxSample,
@@ -108,7 +116,7 @@ class GraphTW(CpSAT2, Graph):
                     timeLimit=timeLimit,
                     stop_condition=stop_condition,
                     warmStart=True,
-                    gapRel=0.05,
+                    gapRel=gapRel,
                 )
             )
             curr_solution = self.solution.copy()

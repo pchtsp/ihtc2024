@@ -73,13 +73,7 @@ class Worker2(QtCore.QThread):
             experiment = my_solver(self.__instance, self.solution)
             status = experiment.solve(self.options)
             self.solution = experiment.solution
-            # for i in range(100):
-            #     if self.abort:
-            #         self.killed.emit()
-            #         self.status.emit("Task killed!")
-            #         break
-            #     print(i)  # Simulate a long-running task
-            #     time.sleep(1)
+
         except:
             import traceback
 
@@ -96,9 +90,7 @@ class Worker2(QtCore.QThread):
             # sys.stdout = sys.__stdout__  # Restore stdout
 
     def kill(self):
-        # print("kill pressed")
         self.abort = True
         if self.my_callback_obj:
-            # print("stop callback called")
             self.my_callback_obj.stop()
             self.killed.emit()

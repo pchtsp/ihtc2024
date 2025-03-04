@@ -314,6 +314,7 @@ class Instance(InstanceCore):
             patients[_id] = SuperDict(is_occupant=True)
             for key in my_keys:
                 patients[_id][key] = occupant[key]
+        self.__get_patients_occupants_cache = patients
         return patients
 
     def get_patient_shifts(self) -> SuperDict:

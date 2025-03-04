@@ -8,8 +8,8 @@ from .. import Solution, Instance
 
 class GraphGRASP(Graph):
 
-    def __init__(self, instance: Instance, solution: Solution = None):
-        Graph.__init__(self, instance, solution)
+    def __init__(self, instance: Instance, solution: Solution = None, **kwargs):
+        Graph.__init__(self, instance, solution, **kwargs)
 
     def solve(self, options: dict = None) -> dict:
         VERBOSE = options.get("msg", False)
@@ -34,10 +34,9 @@ class GraphGRASP(Graph):
         is_mandatory = all_patients.get_property("mandatory")
 
         def get_priority(mandatory, margin, noise):
-            if mandatory:
-                margin = margin * 0.2
-
-            return margin + noise
+            # we want to prioritize mandatory patients
+            # then, we want to prioritize patients with less margin
+            return (-mandatory, margin + noise)
 
         # now, we want to:
         # 1. take out some patients from the solution.
@@ -50,7 +49,7 @@ class GraphGRASP(Graph):
                 break
             patients = self.solution.get_patient_assignment()
             population = patients.keys()
-            percentage_keep = 0.3
+            percentage_keep = self.rng.triangular(0.1, 0.5, 0.9)
             num_to_take_out = round((1 - percentage_keep) * len(population))
             out = rn.sample(sorted(population), num_to_take_out)
             for p in out:
@@ -60,7 +59,10 @@ class GraphGRASP(Graph):
             remaining = (
                 all_patients_keys - self.solution.get_patient_assignment().keys()
             )
-            noise = self.rng.normal(0, max(mandatory_margins) / 4, len(remaining))
+            max_margin = max(mandatory_margins)
+            noise = self.rng.triangular(
+                -max_margin // 2, 0, max_margin // 2, len(remaining)
+            )
             noise = dict(zip(remaining, noise))
             my_priority = lambda v: get_priority(
                 is_mandatory.get(v["id"], True), margin[v["id"]], noise[v["id"]]
@@ -68,11 +70,16 @@ class GraphGRASP(Graph):
             my_list_to_add = (
                 all_patients.filter(remaining).values_tl().sorted(key=my_priority)
             )
+            my_list_to_add.vapply(
+                lambda v: (margin[v["id"]], is_mandatory.get(v["id"]), v["is_occupant"])
+            )
             _, curr_stats = Graph.solve_patients(
-                self, options, my_list_to_add, num_passes=1
+                self,
+                options,
+                my_list_to_add,
+                num_passes=1,
+                max_skipped_mandatory=best_stats.get_sum_errors() + 1,
             )
             if VERBOSE:
-                log.info(
-                    f"current={curr_stats.get_objective()}; errors={curr_stats.get_sum_errors()}; best={best_stats.get_objective()}"
-                )
+                log.info(f"current={curr_stats}; best={best_stats}")
         return self.check_stats_update_solution(curr_stats, best_stats, options)

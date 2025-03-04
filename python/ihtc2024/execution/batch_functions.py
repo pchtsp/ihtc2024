@@ -26,6 +26,7 @@ def solve_zip(
     instances: List[str] = None,
     options: dict = None,
     zip_flag=True,
+    solver_init_options: dict = None,
 ) -> None:
     if not os.path.exists(path_out):
         os.mkdir(path_out)
@@ -71,7 +72,7 @@ def solve_zip(
             options["logPath"] = os.path.join(experiment_dir, options["logPath"])
         my_err_file = os.path.join(experiment_dir, "error.txt")
         start = timer()
-        algo = solver(inst)
+        algo = solver(inst, **solver_init_options)
         try:
             result = algo.solve(options)
         except Exception as e:
@@ -126,11 +127,18 @@ def solve_scenarios_and_zip(
     solver_name: str,
     zip: bool = False,
     root_dir="data",
+    solver_init_options: dict = None,
     **kwargs,
 ):
     zipfile_name = path_to_dir + ".zip"
     for scenario in scenarios:
-        solve_zip(scenario, path_to_dir + "/", solver_name=solver_name, **kwargs)
+        solve_zip(
+            scenario,
+            path_to_dir + "/",
+            solver_name=solver_name,
+            **kwargs,
+            solver_init_options=solver_init_options,
+        )
     if not zip:
         return
     # root_dir = "data"
@@ -167,6 +175,7 @@ def my_benchmark(
     scenarios=None,
     my_range=None,
     instances=None,
+    solver_init_options=None,
     **options,
 ):
     # scenarios = ["ihtc2024_competition_instances"]
@@ -203,6 +212,7 @@ def my_benchmark(
         zip=False,
         options=dict(timeLimit=timeLimit, msg=True, logPath="log.txt", **options),
         instances=instances,
+        solver_init_options=solver_init_options,
     )
 
 

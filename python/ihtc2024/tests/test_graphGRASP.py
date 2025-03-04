@@ -14,7 +14,7 @@ class TestInstance(BaseTestInstance):
 
     def test_solve_toy(self):
         my_experim = solvers["grahpGRASP"](self.instance)
-        my_experim.solve(dict(threads=8, timeLimit=20, msg=True))
+        my_experim.solve(dict(threads=4, timeLimit=20, msg=True))
         checks = my_experim.check_solution()
 
         self.assertEqual(sum(checks.values_tl().vapply(len)), 0)
@@ -22,12 +22,24 @@ class TestInstance(BaseTestInstance):
         print(objective)
         my_experim.run_validator(PATH_TO_VALIDATOR)
 
+    def test_solve_comp01(self):
+        my_experim = self.get_test_experiment("i01.json")
+        my_experim = solvers["grahpGRASP"](my_experim.instance, threads=8)
+        my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
+
     def test_solve_test04(self):
         my_experim = self.get_solved_experiment("test04.json")
-        my_experim = solvers["grahpGRASP"](my_experim.instance)
+        my_experim = solvers["grahpGRASP"](
+            my_experim.instance, my_experim.solution, threads=11
+        )
+        my_experim.solve(dict(threads=11, timeLimit=300, msg=True))
+
+    def test_solve_test05(self):
+        my_experim = self.get_solved_experiment("test05.json")
+        my_experim = solvers["grahpGRASP"](my_experim.instance, threads=8)
         my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
 
     def test_solve_test29(self):
-        my_experim = self.get_test_experiment("i29.json")
+        my_experim = self.get_test_experiment("i30.json")
         my_experim = solvers["grahpGRASP"](my_experim.instance)
-        my_experim.solve(dict(threads=8, timeLimit=300, msg=True))
+        my_experim.solve(dict(threads=4, timeLimit=300, msg=True))

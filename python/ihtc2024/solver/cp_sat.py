@@ -3,13 +3,12 @@ from ..core.experiment import Experiment
 from ortools.sat.python import cp_model
 import random as rn
 import os
-import sys
-from ..core.tools import print_time
+from ..core.tools import print_time, stdout_redirected
 import time
-from contextlib import contextmanager
 from collections import deque
 import json
 import logging as log
+
 
 from pytups import SuperDict, TupList
 
@@ -90,7 +89,7 @@ class CpSAT(Experiment):
                 lambda v: model.AddHint(my_var[v], 0)
             )
 
-        def add_hint_value(my_var, my_dict: SuperDict, default_value=0):
+        def add_hint_value(my_var, my_dict: SuperDict, default_value: int | None = 0):
             # all available values are 1
             my_dict.kvapply(lambda k, v: model.AddHint(my_var[k], v))
             # all non available values are default_value
@@ -118,9 +117,11 @@ class CpSAT(Experiment):
         mixed_age_diff_hint = mixed_age_hint.vapply(lambda v: v[1] - v[0])
         mixed_age_max_hint = mixed_age_hint.vapply(lambda v: v[1])
         mixed_age_min_hint = mixed_age_hint.vapply(lambda v: v[0])
-        add_hint_value(max_age_diff, mixed_age_diff_hint)
-        add_hint_value(min_age, mixed_age_min_hint)
-        add_hint_value(max_age, mixed_age_max_hint)
+        # sometimes the room is not being used, and thus we do not constraint anything
+        # TODO: we could assign the cheapest assignment...
+        add_hint_value(max_age_diff, mixed_age_diff_hint, None)
+        add_hint_value(max_age, mixed_age_max_hint, None)
+        add_hint_value(min_age, mixed_age_min_hint, None)
         # for selected patients, we use the solution
         admission_p_hint = admission_hint.to_dict(1, is_list=False)
         # for unselected optionals, we set the admission day to some value in the domain:
@@ -1200,37 +1201,6 @@ def negate_var_bool(my_var: bool | cp_model.IntVar):
     if isinstance(my_var, int):
         return not my_var
     return my_var.Not()
-
-
-def fileno(file_or_fd):
-    fd = getattr(file_or_fd, "fileno", lambda: file_or_fd)()
-    if not isinstance(fd, int):
-        raise ValueError("Expected a file (`.fileno()`) or a file descriptor")
-    return fd
-
-
-@contextmanager
-def stdout_redirected(to=os.devnull, stdout=None):
-    if stdout is None:
-        stdout = sys.stdout
-
-    stdout_fd = fileno(stdout)
-    # copy stdout_fd before it is overwritten
-    # NOTE: `copied` is inheritable on Windows when duplicating a standard stream
-    with os.fdopen(os.dup(stdout_fd), "wb") as copied:
-        stdout.flush()  # flush library buffers that dup2 knows nothing about
-        try:
-            os.dup2(fileno(to), stdout_fd)  # $ exec >&to
-        except ValueError:  # filename
-            with open(to, "wb") as to_file:
-                os.dup2(to_file.fileno(), stdout_fd)  # $ exec > to
-        try:
-            yield stdout  # allow code to be run with the redirected stdout
-        finally:
-            # restore stdout to its previous value
-            # NOTE: dup2 makes stdout_fd inheritable unconditionally
-            stdout.flush()
-            os.dup2(copied.fileno(), stdout_fd)  # $ exec >&copied
 
 
 def multiple_ands(model: cp_model.CpModel, result, *ands):
