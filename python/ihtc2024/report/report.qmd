@@ -62,10 +62,8 @@ my_instance = my_experiment.instance
 # TODO: delete these test:
 # my_experiment.solution.data['patient_assignment'].pop('p5')
 # my_experiment.solution.data['patient_assignment']['p0']['room'] = 'r1'
-# my_experiment.solution.data['patient_assignment']['p5']['admission_day'] = 4
-# my_experiment.solution.data['patient_assignment']['p6']['admission_day'] = 4
-
-# h4=ot_overtime,
+#my_experiment.solution.data['patient_assignment']['p5']['admission_day'] = 4
+#my_experiment.solution.data['patient_assignment']['p6']['admission_day'] = 4
 
 ```
 
@@ -99,6 +97,8 @@ theaters = my_instance.get_operatingtheaters()
 patient_shifts = my_instance.get_patient_shifts()
 nurse_shifts = my_instance.get_nurse_shift()
 surgeon_capacity = my_instance.get_surgeon_capacity()
+theaters_capacity = my_instance.get_operatingtheater_capacity()
+nurses = my_instance.get_nurses()
 ```
 
 # Instance
@@ -274,7 +274,7 @@ rooms_df = checks['h2'].to_df().rename(columns=col_rename)
 display(rooms_df)
 ```
 
-### Surgen overtime
+### Surgeon overtime
 
 We should not assign overtime to surgeons in each day.
 
@@ -295,6 +295,33 @@ plot = pl.ggplot(surgeon_overtime_df, pl.aes(x='day', y='value', fill='variable'
 if not surgeon_overtime_df.empty:
   display(plot)
 ```
+
+
+### Operating Theater capacity
+
+We should not exceed the daily capacity of operating theaters.
+
+```{python}
+#| label: fig-theater-overtime
+#| fig-cap: "Overtime by theaters per day"
+
+
+col_rename = dict(enumerate(['theater', 'day', 'used', 'excess', 'remaining']))
+coupling_checks['ot_overtime']
+max_time = theaters_capacity.get_property("availability")
+theater_overtime_df = coupling_checks['ot_overtime'].kvapply(lambda k, v: (v+max_time[k], max(v, 0), max(-v, 0))).to_tuplist().to_df().rename(columns=col_rename)
+theater_overtime_df.used = theater_overtime_df.used - theater_overtime_df.excess
+
+pl.options.figure_size = (6.4, 4.8)
+
+theater_overtime_df = pd.melt(theater_overtime_df, id_vars=['theater', 'day'], value_vars=['used', 'excess', 'remaining'])
+
+plot = pl.ggplot(theater_overtime_df, pl.aes(x='day', y='value', fill='variable')) + pl.geom_col() + pl.facet_wrap('theater', scales='free') + pl.ylab("Workload") + pl.theme_minimal() + pl.labs(fill='type')
+if not theater_overtime_df.empty:
+  display(plot)
+
+```
+
 
 ### Wrong admission date
 
@@ -325,7 +352,7 @@ if not late_admission_df.empty:
 
 ```
 
-## Room capacity
+### Room capacity
 
 The number of patients in each room cannot exceed the capacity of the room.
 
@@ -492,12 +519,11 @@ Each patient should have the least number of distinct nurses assigned to him or 
 #| fig-cap: "Number of unique nurses treating each patient"
 
 col_rename = dict(enumerate(['patient', 'nurse']))
-patient_nurses = obj_terms_raw['continuity_of_care'].vapply(list).to_tuplist().to_df().rename(columns=col_rename)
-patient_nurses['value'] = 1
+patient_nurses = obj_terms_raw['continuity_of_care'].vapply(list).to_tuplist().to_df().rename(columns=col_rename).groupby("patient").count().reset_index()
 
 pl.options.figure_size = (6.4, 4.8)
 
-plot = pl.ggplot(patient_nurses, pl.aes(x='patient', y='value', fill='nurse')) + pl.geom_col() + pl.theme_minimal() + pl.ylab("Number of nurses") + pl.theme(legend_position='top')
+plot = pl.ggplot(patient_nurses, pl.aes(x='nurse')) + pl.geom_histogram(bins=8, fill="lightblue") + pl.theme_minimal() + pl.ylab("Number of patients") + pl.xlab("Number of nurses")
 
 if not patient_nurses.empty:
   display(plot)
@@ -513,7 +539,12 @@ Each patient should have nurses assigned with the required skill (or above), dep
 
 col_rename = dict(enumerate(['patient', 'shift', 'required', 'obtained', 'deficit']))
 skill_deficit = obj_terms_raw['room_nurse_skill']
-deficit_df = obj_terms_raw['shift_details'].kvapply(lambda k, v: (v['skill_level_required'], v['nurse_skill'], skill_deficit.get(k, 0))).to_tuplist().to_df().rename(columns=col_rename)
+nurse_skill = nurses.get_property("skill_level")
+
+deficit_df = obj_terms_raw['shift_details'].kvapply(
+  lambda k, v: (
+    v['skill_level_required'], nurse_skill[v['nurse']], skill_deficit.get(k, 0))
+  ).to_tuplist().to_df().rename(columns=col_rename)
 
 obtained_df = deficit_df[['patient', 'shift', 'obtained']]
 deficit_df['used'] = deficit_df.required - deficit_df.deficit
