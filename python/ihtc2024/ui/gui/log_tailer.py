@@ -10,15 +10,19 @@ class LogTailer(QtCore.QObject):
         text_browser: QtWidgets.QTextBrowser,
         interval=1000,
         parent=None,
+        keepLogFile=False,
     ):
         super().__init__(parent)
         self.file_path = file_path
+        if os.path.exists(self.file_path):
+            os.remove(self.file_path)
         self.text_browser = text_browser
         self.text_browser.clear()
         self.interval = interval
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_log)
         self.last_position = 0
+        self.keepLogFile = keepLogFile
 
     @QtCore.Slot()
     def start(self):
@@ -29,10 +33,9 @@ class LogTailer(QtCore.QObject):
     def stop(self):
         # print("stop called")
         self.timer.stop()
-        # we delete the directory of the log
-        my_dir = os.path.dirname(self.file_path)
-        if os.path.exists(my_dir):
-            shutil.rmtree(my_dir)
+        # we delete the log file, unless we configure not to
+        if not self.keepLogFile and os.path.exists(self.file_path):
+            os.remove(self.file_path)
 
     @QtCore.Slot()
     def update_log(self):

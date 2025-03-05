@@ -238,31 +238,31 @@ class Ui_MainWindow(object):
         self.horizontalLayout_10.addLayout(self.verticalLayout_13)
 
         self.tabWidget.addTab(self.Config, "")
-        self.Report_4 = QWidget()
-        self.Report_4.setObjectName(u"Report_4")
-        self.horizontalLayout_4 = QHBoxLayout(self.Report_4)
+        self.Output = QWidget()
+        self.Output.setObjectName(u"Output")
+        self.horizontalLayout_4 = QHBoxLayout(self.Output)
         self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
         self.verticalLayout_15 = QVBoxLayout()
         self.verticalLayout_15.setObjectName(u"verticalLayout_15")
         self.formLayout = QFormLayout()
         self.formLayout.setObjectName(u"formLayout")
-        self.objectiveLabel = QLabel(self.Report_4)
+        self.objectiveLabel = QLabel(self.Output)
         self.objectiveLabel.setObjectName(u"objectiveLabel")
 
         self.formLayout.setWidget(0, QFormLayout.LabelRole, self.objectiveLabel)
 
-        self.objectiveLineEdit = QLineEdit(self.Report_4)
+        self.objectiveLineEdit = QLineEdit(self.Output)
         self.objectiveLineEdit.setObjectName(u"objectiveLineEdit")
         self.objectiveLineEdit.setReadOnly(True)
 
         self.formLayout.setWidget(0, QFormLayout.FieldRole, self.objectiveLineEdit)
 
-        self.errorsLabel = QLabel(self.Report_4)
+        self.errorsLabel = QLabel(self.Output)
         self.errorsLabel.setObjectName(u"errorsLabel")
 
         self.formLayout.setWidget(1, QFormLayout.LabelRole, self.errorsLabel)
 
-        self.errorsLineEdit = QLineEdit(self.Report_4)
+        self.errorsLineEdit = QLineEdit(self.Output)
         self.errorsLineEdit.setObjectName(u"errorsLineEdit")
         self.errorsLineEdit.setReadOnly(True)
 
@@ -273,20 +273,25 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_14 = QHBoxLayout()
         self.horizontalLayout_14.setObjectName(u"horizontalLayout_14")
-        self.checkSolution = QPushButton(self.Report_4)
+        self.checkSolution = QPushButton(self.Output)
         self.checkSolution.setObjectName(u"checkSolution")
 
         self.horizontalLayout_14.addWidget(self.checkSolution)
 
-        self.generateReport = QPushButton(self.Report_4)
+        self.generateReport = QPushButton(self.Output)
         self.generateReport.setObjectName(u"generateReport")
 
         self.horizontalLayout_14.addWidget(self.generateReport)
 
+        self.openReport = QPushButton(self.Output)
+        self.openReport.setObjectName(u"openReport")
+
+        self.horizontalLayout_14.addWidget(self.openReport)
+
 
         self.verticalLayout_15.addLayout(self.horizontalLayout_14)
 
-        self.solution_report = QTextBrowser(self.Report_4)
+        self.solution_report = QTextBrowser(self.Output)
         self.solution_report.setObjectName(u"solution_report")
         sizePolicy.setHeightForWidth(self.solution_report.sizePolicy().hasHeightForWidth())
         self.solution_report.setSizePolicy(sizePolicy)
@@ -297,7 +302,7 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_4.addLayout(self.verticalLayout_15)
 
-        self.tabWidget.addTab(self.Report_4, "")
+        self.tabWidget.addTab(self.Output, "")
 
         self.verticalLayout_17.addWidget(self.tabWidget)
 
@@ -364,7 +369,8 @@ class Ui_MainWindow(object):
         self.errorsLabel.setText(QCoreApplication.translate("MainWindow", u"Errors", None))
         self.checkSolution.setText(QCoreApplication.translate("MainWindow", u"Check solution", None))
         self.generateReport.setText(QCoreApplication.translate("MainWindow", u"Generate report", None))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.Report_4), QCoreApplication.translate("MainWindow", u"Statistics", None))
+        self.openReport.setText(QCoreApplication.translate("MainWindow", u"Open report", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.Output), QCoreApplication.translate("MainWindow", u"Statistics", None))
         self.menuFile.setTitle(QCoreApplication.translate("MainWindow", u"File", None))
     # retranslateUi
 

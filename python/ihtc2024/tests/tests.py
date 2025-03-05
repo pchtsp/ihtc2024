@@ -101,6 +101,18 @@ class TestInstance(BaseTestInstance):
         except OSError:
             pass
 
+    def test_experiment_excel(self):
+        my_experim = Experiment(self.instance, self.solution)
+        excel_path = os.path.join(tests_dir, "experiment.xlsx")
+        my_experim.to_excel(excel_path)
+        my_experim = Experiment.from_excel(excel_path)
+        my_experim.get_objective()
+        my_experim.check_solution()
+        try:
+            os.remove(excel_path)
+        except OSError:
+            pass
+
     def test_instance_to_ithc(self):
         path = os.path.join(tests_dir, "instance_ithc.json")
         self.instance.to_ihtc_json(path)
@@ -110,7 +122,6 @@ class TestInstance(BaseTestInstance):
             os.remove(path)
         except OSError:
             pass
-
 
     def test_validator(self):
         my_experim_solved = self.get_solved_experiment("test01.json")
@@ -159,7 +170,6 @@ class TestInstance(BaseTestInstance):
         self.assertRaises(StopIteration, parser.feed, content)
 
 
-
 class HTMLCheckTags(HTMLParser):
     things_to_check: Optional[Dict[str, List[Tuple[str, str]]]]
 
@@ -197,6 +207,7 @@ class HTMLCheckTags(HTMLParser):
                 # we stop searching
                 if not (self.things_to_check):
                     raise StopIteration
+
 
 if __name__ == "__main__":
     unittest.main()

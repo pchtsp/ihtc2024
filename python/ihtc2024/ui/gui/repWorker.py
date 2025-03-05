@@ -7,12 +7,15 @@ from ihtc2024.core.tools import stdout_redirected
 class RepWorker(BaseWorker):
     finished = QtCore.Signal(bool, str)
 
+    def __init__(self, my_app, instance, solution, log_path: str, *args, **kwargs):
+        BaseWorker.__init__(self, my_app, instance, solution, *args, **kwargs)
+        self.log_name = log_path
+
     def run(self):
         rep_path = ""
         success = False
         try:
-            path_of_log = "log.txt"
-            with open(path_of_log, "a") as f, stdout_redirected(f, sys.stderr):
+            with open(self.log_name, "a") as f, stdout_redirected(f, sys.stderr):
                 Experiment = self.my_app.get_solver(
                     self.my_app.get_default_solver_name()
                 )

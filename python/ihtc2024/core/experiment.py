@@ -109,15 +109,15 @@ class Experiment(ExperimentCore):
         with pd.ExcelWriter(path) as writer:
             for table in data.keys():
                 content = data[table]
-                # TODO: check the schema for array / object
                 if isinstance(content, list):
                     pd.DataFrame.from_records(content).to_excel(
-                        writer, table, index=False
+                        excel_writer=writer, sheet_name=table, index=False
                     )
                 elif isinstance(content, dict):
-                    pd.DataFrame.from_dict(content, orient="index").to_excel(
-                        writer, table, header=False
-                    )
+                    df = pd.DataFrame.from_dict(content, orient="index")
+                    df.reset_index(inplace=True)
+                    df.columns = ["key", "value"]
+                    df.to_excel(excel_writer=writer, sheet_name=table, index=False)
         return True
 
     def solve(self, options: dict = None):

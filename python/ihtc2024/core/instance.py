@@ -64,7 +64,15 @@ class Instance(InstanceCore):
         data_raw = read_excel(path, sheet_name=my_sheets)
 
         # SuperDict is just a dictionary with additional methods:
-        data = SuperDict(data_raw).vapply(lambda v: v.to_dict(orient="records"))
+        data = (
+            SuperDict(data_raw)
+            .vapply(lambda v: v.to_dict(orient="records"))
+            .vapply(TupList)
+        )
+        for table, indices in TABLE_KEYS.items():
+            if indices is None:
+                # it's a dictionary
+                data[table] = data[table].to_dict("value", indices="key", is_list=False)
 
         return cls.from_dict(data)
 
