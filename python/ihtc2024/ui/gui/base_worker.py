@@ -42,7 +42,7 @@ class BaseWorker(QtCore.QThread):
         self.abort = False
         self.is_running = True
 
-        self.__instance = my_app.instance.from_json_str(instance)
+        self._instance = my_app.instance.from_json_str(instance)
         self.solution = None
         if solution is not None:
             self.solution = my_app.solution.from_json_str(solution)

@@ -181,7 +181,7 @@ class Graph(Experiment):
             my_callback = options.get("stop_condition", None)
             if isinstance(my_callback, StopOnUserInput):
                 # if I stopped it via callback, then I return the status
-                if my_callback.__stop:
+                if my_callback.has_stopped():
                     status = STATUS_USER_INTERRUPT
         return dict(status_sol=status_sol, status=status)
 
@@ -230,3 +230,6 @@ class StopOnUserInput(object):
 
     def reset(self):
         self.__stop = False
+
+    def has_stopped(self):
+        return self.__stop

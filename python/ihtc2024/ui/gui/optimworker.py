@@ -31,7 +31,7 @@ class OptimWorker(BaseWorker):
                 self.my_callback_obj = my_solver.getStopOnUser_callback()
                 self.options["stop_condition"] = self.my_callback_obj
 
-            experiment = my_solver(self.__instance, self.solution)
+            experiment = my_solver(self._instance, self.solution)
             status = experiment.solve(self.options)
             self.solution = experiment.solution
 

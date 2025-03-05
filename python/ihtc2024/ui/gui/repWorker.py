@@ -16,7 +16,7 @@ class RepWorker(BaseWorker):
                 Experiment = self.my_app.get_solver(
                     self.my_app.get_default_solver_name()
                 )
-                experiment = Experiment(self.instance, self.solution)
+                experiment = Experiment(self._instance, self.solution)
                 # self.options["log_handler"] = self.text_browser_handler
                 self.status.emit("Task started!")
                 self.started.emit()

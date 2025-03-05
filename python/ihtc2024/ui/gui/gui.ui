@@ -13,6 +13,52 @@
   <property name="windowTitle">
    <string>MyOptimApp</string>
   </property>
+  <property name="styleSheet">
+   <string notr="true">
+    QMainWindow {
+        background-color: #f0f0f0;
+    }
+    QPushButton {
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 14px;
+        margin: 4px 2px;
+        transition-duration: 0.4s;
+        cursor: pointer;
+        border-radius: 12px;
+    }
+    QPushButton:hover {
+        background-color: white;
+        color: black;
+        border: 2px solid #4CAF50;
+    }
+    QLabel {
+        font-size: 14px;
+        color: #333;
+    }
+    QLineEdit {
+        padding: 5px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    QComboBox {
+        padding: 5px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    QTextBrowser {
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 5px;
+        background-color: white;
+    }
+   </string>
+  </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QHBoxLayout" name="horizontalLayout">
     <item>
@@ -32,7 +78,9 @@
             <widget class="QPushButton" name="chooseFile">
              <property name="font">
               <font>
-               <pointsize>11</pointsize>
+               <pointsize>-1</pointsize>
+               <underline>false</underline>
+               <strikeout>false</strikeout>
               </font>
              </property>
              <property name="text">
@@ -54,7 +102,9 @@
             <widget class="QPushButton" name="exportSolution">
              <property name="font">
               <font>
-               <pointsize>11</pointsize>
+               <pointsize>-1</pointsize>
+               <underline>false</underline>
+               <strikeout>false</strikeout>
               </font>
              </property>
              <property name="text">
@@ -69,7 +119,9 @@
             <widget class="QPushButton" name="exportSolution_to">
              <property name="font">
               <font>
-               <pointsize>11</pointsize>
+               <pointsize>-1</pointsize>
+               <underline>false</underline>
+               <strikeout>false</strikeout>
               </font>
              </property>
              <property name="text">
@@ -88,6 +140,7 @@
             <widget class="QLabel" name="instCheck">
              <property name="font">
               <font>
+               <pointsize>-1</pointsize>
                <bold>true</bold>
               </font>
              </property>
@@ -106,6 +159,7 @@
             <widget class="QLabel" name="solCheck">
              <property name="font">
               <font>
+               <pointsize>-1</pointsize>
                <bold>true</bold>
               </font>
              </property>
@@ -124,7 +178,7 @@
        <item>
         <widget class="QTabWidget" name="tabWidget">
          <property name="currentIndex">
-          <number>0</number>
+          <number>1</number>
          </property>
          <widget class="QWidget" name="Config">
           <property name="toolTip">
@@ -216,6 +270,16 @@
                  </property>
                 </widget>
                </item>
+               <item>
+                <widget class="QPushButton" name="stopExecution">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="text">
+                  <string>Stop execution</string>
+                 </property>
+                </widget>
+               </item>
               </layout>
              </item>
              <item>
@@ -225,6 +289,11 @@
                  <horstretch>1</horstretch>
                  <verstretch>1</verstretch>
                 </sizepolicy>
+               </property>
+               <property name="font">
+                <font>
+                 <family>Monospace</family>
+                </font>
                </property>
               </widget>
              </item>
@@ -296,6 +365,11 @@
                  <horstretch>1</horstretch>
                  <verstretch>1</verstretch>
                 </sizepolicy>
+               </property>
+               <property name="font">
+                <font>
+                 <family>Monospace</family>
+                </font>
                </property>
               </widget>
              </item>

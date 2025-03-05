@@ -27,6 +27,51 @@ class Ui_MainWindow(object):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
         MainWindow.resize(672, 544)
+        MainWindow.setStyleSheet(u"\n"
+"    QMainWindow {\n"
+"        background-color: #f0f0f0;\n"
+"    }\n"
+"    QPushButton {\n"
+"        background-color: #4CAF50;\n"
+"        color: white;\n"
+"        border: none;\n"
+"        padding: 10px 20px;\n"
+"        text-align: center;\n"
+"        text-decoration: none;\n"
+"        display: inline-block;\n"
+"        font-size: 14px;\n"
+"        margin: 4px 2px;\n"
+"        transition-duration: 0.4s;\n"
+"        cursor: pointer;\n"
+"        border-radius: 12px;\n"
+"    }\n"
+"    QPushButton:hover {\n"
+"        background-color: white;\n"
+"        color: black;\n"
+"        border: 2px solid #4CAF50;\n"
+"    }\n"
+"    QLabel {\n"
+"        font-size: 14px;\n"
+"        color: #333;\n"
+"    }\n"
+"    QLineEdit {\n"
+"        padding: 5px;\n"
+"        border: 1px solid #ccc;\n"
+"        border-radius: 4px;\n"
+"    }\n"
+"    QComboBox {\n"
+"        padding: 5px;\n"
+"        border: 1px solid #ccc;\n"
+"        border-radius: 4px;\n"
+"    }\n"
+"    QTextBrowser {\n"
+"        border: 1px solid #ccc;\n"
+"     "
+                        "   border-radius: 4px;\n"
+"        padding: 5px;\n"
+"        background-color: white;\n"
+"    }\n"
+"   ")
         self.actionOpen_from = QAction(MainWindow)
         self.actionOpen_from.setObjectName(u"actionOpen_from")
         self.actionExit = QAction(MainWindow)
@@ -52,7 +97,8 @@ class Ui_MainWindow(object):
         self.chooseFile = QPushButton(self.widget)
         self.chooseFile.setObjectName(u"chooseFile")
         font = QFont()
-        font.setPointSize(11)
+        font.setUnderline(False)
+        font.setStrikeOut(False)
         self.chooseFile.setFont(font)
 
         self.horizontalLayout_3.addWidget(self.chooseFile)
@@ -166,6 +212,12 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_12.addWidget(self.generateSolution)
 
+        self.stopExecution = QPushButton(self.Config)
+        self.stopExecution.setObjectName(u"stopExecution")
+        self.stopExecution.setEnabled(False)
+
+        self.horizontalLayout_12.addWidget(self.stopExecution)
+
 
         self.verticalLayout_13.addLayout(self.horizontalLayout_12)
 
@@ -176,6 +228,9 @@ class Ui_MainWindow(object):
         sizePolicy.setVerticalStretch(1)
         sizePolicy.setHeightForWidth(self.solution_log.sizePolicy().hasHeightForWidth())
         self.solution_log.setSizePolicy(sizePolicy)
+        font2 = QFont()
+        font2.setFamilies([u"Monospace"])
+        self.solution_log.setFont(font2)
 
         self.verticalLayout_13.addWidget(self.solution_log)
 
@@ -235,6 +290,7 @@ class Ui_MainWindow(object):
         self.solution_report.setObjectName(u"solution_report")
         sizePolicy.setHeightForWidth(self.solution_report.sizePolicy().hasHeightForWidth())
         self.solution_report.setSizePolicy(sizePolicy)
+        self.solution_report.setFont(font2)
 
         self.verticalLayout_15.addWidget(self.solution_report)
 
@@ -272,7 +328,7 @@ class Ui_MainWindow(object):
         self.chooseFile.setDefault(False)
         self.exportSolution.setDefault(False)
         self.exportSolution_to.setDefault(False)
-        self.tabWidget.setCurrentIndex(0)
+        self.tabWidget.setCurrentIndex(1)
         self.generateSolution.setDefault(False)
 
 
@@ -302,6 +358,7 @@ class Ui_MainWindow(object):
         self.log_level.setCurrentText(QCoreApplication.translate("MainWindow", u"INFO", None))
         self.reuse_solLabel.setText(QCoreApplication.translate("MainWindow", u"Reuse previous solution", None))
         self.generateSolution.setText(QCoreApplication.translate("MainWindow", u"Generate plan", None))
+        self.stopExecution.setText(QCoreApplication.translate("MainWindow", u"Stop execution", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.Config), QCoreApplication.translate("MainWindow", u"Solve", None))
         self.objectiveLabel.setText(QCoreApplication.translate("MainWindow", u"Objective", None))
         self.errorsLabel.setText(QCoreApplication.translate("MainWindow", u"Errors", None))

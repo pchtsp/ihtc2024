@@ -83,7 +83,7 @@ class MainWindow_EXCEC(object):
         self.ui.exportSolution.clicked.connect(self.export_solution)
         self.ui.exportSolution_to.clicked.connect(self.export_solution_to)
         self.ui.generateReport.clicked.connect(self.generate_report)
-
+        self.ui.generateSolution.clicked.connect(self.generate_solution)
         # other
         self.ui.max_time.textEdited.connect(self.update_options)
         self.ui.log_level.currentIndexChanged.connect(self.update_options)
@@ -169,6 +169,7 @@ class MainWindow_EXCEC(object):
             my_instance = self.Instance.from_json(path)
             if my_instance.data:
                 self.instance = my_instance
+                self.solution = None
             else:
                 raise Exception("No data in instance")
             return 1
@@ -262,13 +263,18 @@ class MainWindow_EXCEC(object):
             copy.deepcopy(options),
         )
         self.opt_worker.setObjectName("test thread")
+        self.opt_worker.setObjectName("test thread")
 
-        self.opt_worker.finished.connect(self.get_solution)
         self.my_log_tailer = LogTailer(
             options["logPath"], self.ui.solution_log, interval=100
         )
         self.opt_worker.started.connect(self.my_log_tailer.start)
         self.opt_worker.finished.connect(self.my_log_tailer.stop)
+        self.opt_worker.finished.connect(self.get_solution)
+        self.opt_worker.error.connect(self.optim_failed)
+        self.ui.stopExecution.clicked.connect(self.opt_worker.kill)
+        self.ui.generateSolution.setEnabled(False)
+        self.ui.stopExecution.setEnabled(True)
 
         # new Worker:
         self.opt_worker.start()
@@ -297,6 +303,8 @@ class MainWindow_EXCEC(object):
             return 0
         self.solution = self.Solution.from_json_str(soldata)
         self.update_ui()
+        self.ui.generateSolution.setEnabled(True)
+        self.ui.stopExecution.setEnabled(False)
         return 1
 
     def export_solution_gen(self, output_path):
@@ -403,13 +411,20 @@ class MainWindow_EXCEC(object):
         self.rep_worker.quit()
         self.rep_worker.wait()
 
-    def toggle_execution(self):
-        if self.opt_worker and self.opt_worker.isRunning():
-            self.ui.generateSolution.setText("Stop execution")
-            self.ui.generateSolution.clicked.connect(self.opt_worker.kill)
-            return 1
-        self.ui.generateSolution.setText("Generate plan")
-        self.ui.generateSolution.clicked.connect(self.generate_solution)
+    @QtCore.Slot()
+    def optim_failed(self, text):
+        if self.my_log_tailer:
+            self.my_log_tailer.stop()
+        self.ui.solution_log.insertPlainText(text)
+        self.ui.solution_log.moveCursor(QtGui.QTextCursor.MoveOperation.End)
+
+    # def toggle_execution(self):
+    #     if self.opt_worker and self.opt_worker.isRunning():
+    #         self.ui.generateSolution.setText("Stop execution")
+    #         self.ui.generateSolution.clicked.connect(self.opt_worker.kill)
+    #         return 1
+    #     self.ui.generateSolution.setText("Generate plan")
+    #     self.ui.generateSolution.clicked.connect(self.generate_solution)
 
 
 #
