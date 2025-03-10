@@ -10,6 +10,7 @@ The `python` directory has the main code, including solving method.
 
 Main components are:
 
+* `python/ihtc2024/README.md`: instructions on installing.
 * `python/ihtc2024/core/`: logic about pre-processing, post-processing, charts, validations and I/O.
 * `python/ihtc2024/solver/cp_sat.py`: CP-SAT model to solve complete problem or a time window neighborhood.
 * `python/ihtc2024/graph/`: an attempt at creating a graph-based solution space for patients.
