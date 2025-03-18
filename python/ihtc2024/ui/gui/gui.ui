@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>672</width>
-    <height>544</height>
+    <width>837</width>
+    <height>594</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -36,6 +36,11 @@
         background-color: white;
         color: black;
         border: 2px solid #4CAF50;
+    }
+    QPushButton:disabled {
+        background-color: #d3d3d3;
+        color: #a9a9a9;
+        border: 1px solid #a9a9a9;
     }
     QLabel {
         font-size: 14px;
@@ -76,6 +81,12 @@
            </property>
            <item>
             <widget class="QPushButton" name="chooseFile">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="font">
               <font>
                <pointsize>-1</pointsize>
@@ -93,6 +104,12 @@
            </item>
            <item>
             <widget class="QPushButton" name="loadTest">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="text">
               <string>Test</string>
              </property>
@@ -100,6 +117,12 @@
            </item>
            <item>
             <widget class="QPushButton" name="exportSolution">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="font">
               <font>
                <pointsize>-1</pointsize>
@@ -117,6 +140,12 @@
            </item>
            <item>
             <widget class="QPushButton" name="exportSolution_to">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="font">
               <font>
                <pointsize>-1</pointsize>
@@ -132,10 +161,6 @@
              </property>
             </widget>
            </item>
-          </layout>
-         </item>
-         <item>
-          <layout class="QHBoxLayout" name="horizontalLayout_2">
            <item>
             <widget class="QLabel" name="instCheck">
              <property name="font">
@@ -156,6 +181,22 @@
             </widget>
            </item>
            <item>
+            <spacer name="horizontalSpacer_4">
+             <property name="orientation">
+              <enum>Qt::Orientation::Horizontal</enum>
+             </property>
+             <property name="sizeType">
+              <enum>QSizePolicy::Policy::Fixed</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
             <widget class="QLabel" name="solCheck">
              <property name="font">
               <font>
@@ -171,14 +212,30 @@
              </property>
             </widget>
            </item>
+           <item>
+            <spacer name="horizontalSpacer">
+             <property name="orientation">
+              <enum>Qt::Orientation::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
           </layout>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayout_2"/>
          </item>
         </layout>
        </item>
        <item>
         <widget class="QTabWidget" name="tabWidget">
          <property name="currentIndex">
-          <number>1</number>
+          <number>0</number>
          </property>
          <widget class="QWidget" name="Config">
           <property name="toolTip">
@@ -196,17 +253,23 @@
                 <enum>QLayout::SizeConstraint::SetMaximumSize</enum>
                </property>
                <property name="fieldGrowthPolicy">
-                <enum>QFormLayout::FieldGrowthPolicy::ExpandingFieldsGrow</enum>
+                <enum>QFormLayout::FieldGrowthPolicy::FieldsStayAtSizeHint</enum>
                </property>
                <item row="1" column="0">
                 <widget class="QLabel" name="max_timeLabel">
                  <property name="text">
-                  <string>Max solving time                                                                                                         </string>
+                  <string>Max solving time</string>
                  </property>
                 </widget>
                </item>
                <item row="1" column="1">
                 <widget class="QLineEdit" name="max_time">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
                  <property name="text">
                   <string>60</string>
                  </property>
@@ -262,6 +325,12 @@
               <layout class="QHBoxLayout" name="horizontalLayout_12">
                <item>
                 <widget class="QPushButton" name="generateSolution">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
                  <property name="text">
                   <string>Generate plan</string>
                  </property>
@@ -275,10 +344,29 @@
                  <property name="enabled">
                   <bool>false</bool>
                  </property>
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
                  <property name="text">
                   <string>Stop execution</string>
                  </property>
                 </widget>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_2">
+                 <property name="orientation">
+                  <enum>Qt::Orientation::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
                </item>
               </layout>
              </item>
@@ -310,6 +398,9 @@
             <layout class="QVBoxLayout" name="verticalLayout_15" stretch="0,0,0">
              <item>
               <layout class="QFormLayout" name="formLayout">
+               <property name="fieldGrowthPolicy">
+                <enum>QFormLayout::FieldGrowthPolicy::FieldsStayAtSizeHint</enum>
+               </property>
                <item row="0" column="0">
                 <widget class="QLabel" name="objectiveLabel">
                  <property name="text">
@@ -363,6 +454,19 @@
                  </property>
                 </widget>
                </item>
+               <item>
+                <spacer name="horizontalSpacer_3">
+                 <property name="orientation">
+                  <enum>Qt::Orientation::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
               </layout>
              </item>
              <item>
@@ -396,7 +500,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>672</width>
+     <width>837</width>
      <height>23</height>
     </rect>
    </property>

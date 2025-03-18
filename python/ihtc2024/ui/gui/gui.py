@@ -19,14 +19,14 @@ from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout,
     QHBoxLayout, QLabel, QLayout, QLineEdit,
     QMainWindow, QMenu, QMenuBar, QPushButton,
-    QSizePolicy, QStatusBar, QTabWidget, QTextBrowser,
-    QVBoxLayout, QWidget)
+    QSizePolicy, QSpacerItem, QStatusBar, QTabWidget,
+    QTextBrowser, QVBoxLayout, QWidget)
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(672, 544)
+        MainWindow.resize(837, 594)
         MainWindow.setStyleSheet(u"\n"
 "    QMainWindow {\n"
 "        background-color: #f0f0f0;\n"
@@ -50,6 +50,11 @@ class Ui_MainWindow(object):
 "        color: black;\n"
 "        border: 2px solid #4CAF50;\n"
 "    }\n"
+"    QPushButton:disabled {\n"
+"        background-color: #d3d3d3;\n"
+"        color: #a9a9a9;\n"
+"        border: 1px solid #a9a9a9;\n"
+"    }\n"
 "    QLabel {\n"
 "        font-size: 14px;\n"
 "        color: #333;\n"
@@ -60,14 +65,14 @@ class Ui_MainWindow(object):
 "        border-radius: 4px;\n"
 "    }\n"
 "    QComboBox {\n"
-"        padding: 5px;\n"
+"        padding: 5px;"
+                        "\n"
 "        border: 1px solid #ccc;\n"
 "        border-radius: 4px;\n"
 "    }\n"
 "    QTextBrowser {\n"
 "        border: 1px solid #ccc;\n"
-"     "
-                        "   border-radius: 4px;\n"
+"        border-radius: 4px;\n"
 "        padding: 5px;\n"
 "        background-color: white;\n"
 "    }\n"
@@ -96,6 +101,11 @@ class Ui_MainWindow(object):
         self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
         self.chooseFile = QPushButton(self.widget)
         self.chooseFile.setObjectName(u"chooseFile")
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.chooseFile.sizePolicy().hasHeightForWidth())
+        self.chooseFile.setSizePolicy(sizePolicy)
         font = QFont()
         font.setUnderline(False)
         font.setStrikeOut(False)
@@ -105,26 +115,27 @@ class Ui_MainWindow(object):
 
         self.loadTest = QPushButton(self.widget)
         self.loadTest.setObjectName(u"loadTest")
+        sizePolicy.setHeightForWidth(self.loadTest.sizePolicy().hasHeightForWidth())
+        self.loadTest.setSizePolicy(sizePolicy)
 
         self.horizontalLayout_3.addWidget(self.loadTest)
 
         self.exportSolution = QPushButton(self.widget)
         self.exportSolution.setObjectName(u"exportSolution")
+        sizePolicy.setHeightForWidth(self.exportSolution.sizePolicy().hasHeightForWidth())
+        self.exportSolution.setSizePolicy(sizePolicy)
         self.exportSolution.setFont(font)
 
         self.horizontalLayout_3.addWidget(self.exportSolution)
 
         self.exportSolution_to = QPushButton(self.widget)
         self.exportSolution_to.setObjectName(u"exportSolution_to")
+        sizePolicy.setHeightForWidth(self.exportSolution_to.sizePolicy().hasHeightForWidth())
+        self.exportSolution_to.setSizePolicy(sizePolicy)
         self.exportSolution_to.setFont(font)
 
         self.horizontalLayout_3.addWidget(self.exportSolution_to)
 
-
-        self.verticalLayout.addLayout(self.horizontalLayout_3)
-
-        self.horizontalLayout_2 = QHBoxLayout()
-        self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
         self.instCheck = QLabel(self.widget)
         self.instCheck.setObjectName(u"instCheck")
         font1 = QFont()
@@ -133,15 +144,28 @@ class Ui_MainWindow(object):
         self.instCheck.setStyleSheet(u"QLabel { color : red; }")
         self.instCheck.setTextFormat(Qt.TextFormat.AutoText)
 
-        self.horizontalLayout_2.addWidget(self.instCheck)
+        self.horizontalLayout_3.addWidget(self.instCheck)
+
+        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_3.addItem(self.horizontalSpacer_4)
 
         self.solCheck = QLabel(self.widget)
         self.solCheck.setObjectName(u"solCheck")
         self.solCheck.setFont(font1)
         self.solCheck.setStyleSheet(u"QLabel { color : red; }")
 
-        self.horizontalLayout_2.addWidget(self.solCheck)
+        self.horizontalLayout_3.addWidget(self.solCheck)
 
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_3.addItem(self.horizontalSpacer)
+
+
+        self.verticalLayout.addLayout(self.horizontalLayout_3)
+
+        self.horizontalLayout_2 = QHBoxLayout()
+        self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
 
         self.verticalLayout.addLayout(self.horizontalLayout_2)
 
@@ -159,7 +183,7 @@ class Ui_MainWindow(object):
         self.formLayout_3 = QFormLayout()
         self.formLayout_3.setObjectName(u"formLayout_3")
         self.formLayout_3.setSizeConstraint(QLayout.SizeConstraint.SetMaximumSize)
-        self.formLayout_3.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self.formLayout_3.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
         self.max_timeLabel = QLabel(self.Config)
         self.max_timeLabel.setObjectName(u"max_timeLabel")
 
@@ -167,6 +191,11 @@ class Ui_MainWindow(object):
 
         self.max_time = QLineEdit(self.Config)
         self.max_time.setObjectName(u"max_time")
+        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        sizePolicy1.setHorizontalStretch(0)
+        sizePolicy1.setVerticalStretch(0)
+        sizePolicy1.setHeightForWidth(self.max_time.sizePolicy().hasHeightForWidth())
+        self.max_time.setSizePolicy(sizePolicy1)
 
         self.formLayout_3.setWidget(1, QFormLayout.FieldRole, self.max_time)
 
@@ -209,25 +238,33 @@ class Ui_MainWindow(object):
         self.horizontalLayout_12.setObjectName(u"horizontalLayout_12")
         self.generateSolution = QPushButton(self.Config)
         self.generateSolution.setObjectName(u"generateSolution")
+        sizePolicy.setHeightForWidth(self.generateSolution.sizePolicy().hasHeightForWidth())
+        self.generateSolution.setSizePolicy(sizePolicy)
 
         self.horizontalLayout_12.addWidget(self.generateSolution)
 
         self.stopExecution = QPushButton(self.Config)
         self.stopExecution.setObjectName(u"stopExecution")
         self.stopExecution.setEnabled(False)
+        sizePolicy.setHeightForWidth(self.stopExecution.sizePolicy().hasHeightForWidth())
+        self.stopExecution.setSizePolicy(sizePolicy)
 
         self.horizontalLayout_12.addWidget(self.stopExecution)
+
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_12.addItem(self.horizontalSpacer_2)
 
 
         self.verticalLayout_13.addLayout(self.horizontalLayout_12)
 
         self.solution_log = QTextBrowser(self.Config)
         self.solution_log.setObjectName(u"solution_log")
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        sizePolicy.setHorizontalStretch(1)
-        sizePolicy.setVerticalStretch(1)
-        sizePolicy.setHeightForWidth(self.solution_log.sizePolicy().hasHeightForWidth())
-        self.solution_log.setSizePolicy(sizePolicy)
+        sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        sizePolicy2.setHorizontalStretch(1)
+        sizePolicy2.setVerticalStretch(1)
+        sizePolicy2.setHeightForWidth(self.solution_log.sizePolicy().hasHeightForWidth())
+        self.solution_log.setSizePolicy(sizePolicy2)
         font2 = QFont()
         font2.setFamilies([u"Monospace"])
         self.solution_log.setFont(font2)
@@ -246,6 +283,7 @@ class Ui_MainWindow(object):
         self.verticalLayout_15.setObjectName(u"verticalLayout_15")
         self.formLayout = QFormLayout()
         self.formLayout.setObjectName(u"formLayout")
+        self.formLayout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
         self.objectiveLabel = QLabel(self.Output)
         self.objectiveLabel.setObjectName(u"objectiveLabel")
 
@@ -288,13 +326,17 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_14.addWidget(self.openReport)
 
+        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_14.addItem(self.horizontalSpacer_3)
+
 
         self.verticalLayout_15.addLayout(self.horizontalLayout_14)
 
         self.solution_report = QTextBrowser(self.Output)
         self.solution_report.setObjectName(u"solution_report")
-        sizePolicy.setHeightForWidth(self.solution_report.sizePolicy().hasHeightForWidth())
-        self.solution_report.setSizePolicy(sizePolicy)
+        sizePolicy2.setHeightForWidth(self.solution_report.sizePolicy().hasHeightForWidth())
+        self.solution_report.setSizePolicy(sizePolicy2)
         self.solution_report.setFont(font2)
 
         self.verticalLayout_15.addWidget(self.solution_report)
@@ -312,7 +354,7 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 672, 23))
+        self.menubar.setGeometry(QRect(0, 0, 837, 23))
         self.menuFile = QMenu(self.menubar)
         self.menuFile.setObjectName(u"menuFile")
         MainWindow.setMenuBar(self.menubar)
@@ -333,7 +375,7 @@ class Ui_MainWindow(object):
         self.chooseFile.setDefault(False)
         self.exportSolution.setDefault(False)
         self.exportSolution_to.setDefault(False)
-        self.tabWidget.setCurrentIndex(1)
+        self.tabWidget.setCurrentIndex(0)
         self.generateSolution.setDefault(False)
 
 
@@ -355,7 +397,7 @@ class Ui_MainWindow(object):
 #if QT_CONFIG(tooltip)
         self.Config.setToolTip(QCoreApplication.translate("MainWindow", u"<html><head/><body><p>configuration</p></body></html>", None))
 #endif // QT_CONFIG(tooltip)
-        self.max_timeLabel.setText(QCoreApplication.translate("MainWindow", u"Max solving time                                                                                                         ", None))
+        self.max_timeLabel.setText(QCoreApplication.translate("MainWindow", u"Max solving time", None))
         self.max_time.setText(QCoreApplication.translate("MainWindow", u"60", None))
         self.max_time.setPlaceholderText(QCoreApplication.translate("MainWindow", u"60", None))
         self.solverLabel.setText(QCoreApplication.translate("MainWindow", u"Solver", None))

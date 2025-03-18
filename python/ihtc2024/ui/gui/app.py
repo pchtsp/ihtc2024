@@ -393,6 +393,12 @@ class MainWindow_EXCEC(object):
         if os.path.exists(dirname):
             html_file_path = os.path.join(dirname, "report.html")
             os.rename(rep_path, html_file_path)
+        else:
+            self.show_message(
+                "Error",
+                "No report was found. Please generate a report first.",
+            )
+            return 0
         with open(html_file_path, "r") as file:
             content = file.read()
             text_browser.setText(content)
@@ -455,20 +461,6 @@ class MainWindow_EXCEC(object):
             sum_errors = sum(len(v) for v in errors.values())
             self.ui.objectiveLineEdit.setText(f"{experiment.get_objective()}")
             self.ui.errorsLineEdit.setText(f"{sum_errors}")
-
-
-#
-# class QTextBrowserLogger(logging.Handler):
-#     text_browser: QtWidgets.QTextBrowser
-#
-#     def __init__(self, text_browser):
-#         super().__init__()
-#         self.text_browser = text_browser
-#
-#     def emit(self, record):
-#         msg = self.format(record)
-#         self.text_browser.append(msg)
-#         self.text_browser.moveCursor(QtGui.QTextCursor.MoveOperation.End)
 
 
 def get_file_dialog(my_dir: str, load=True):
